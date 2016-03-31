@@ -37,14 +37,9 @@
 #endif  // defined(DEBUG) || defined(_DEBUG)
 #endif  // !defined(VERIFY)
 
-
 // Macro to simplify determining the number of elements in an array (do *not*
 // use this macro for pointers)
 #define ARRAY_LENGTH(x) (sizeof(x)/sizeof((x)[0]))
-
-// Safe string-copying and string-concatenation routines that take length-
-// limiting parameters and *always* 0-terminate the destination string
-char* strncpyz(char* const psDestination, const char* const psSource, const unsigned int uiDestinationLength);
 
 // Class to allow access to a string as an ANSI string
 class AnsiString

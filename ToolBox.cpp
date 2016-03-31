@@ -7,18 +7,6 @@
 #include <stdio.h>
 #include "ToolBox.h"
 
-// Safe string-copying, string-concatenation, and string-formatting implementations
-char* strncpyz(char* const psDestination, const char* const psSource, const unsigned int uiDestinationLength)
-	{
-	if(0 < uiDestinationLength)
-		{
-		const size_t stSourceSength = strlen(psSource);
-		strncpy(psDestination, psSource, min(stSourceSength+1, uiDestinationLength-1));
-		psDestination[uiDestinationLength-1] = '\0';
-		}
-	return psDestination;
-	}
-
 // AnsiString implementation
 AnsiString::AnsiString(const wchar_t* const psWide, const wchar_t pcStringTerminator)
 	{
@@ -92,7 +80,7 @@ AnsiString::AnsiString(const char* const psAnsi, const char pcStringTerminator)
 			m_psAnsi = (char*)LocalAlloc(0, stAnsiLength*sizeof(*m_psAnsi));
 			if(0 != m_psAnsi)
 				{
-				strncpy(m_psAnsi, psAnsi, stAnsiLength);
+				strncpy_s(m_psAnsi, stAnsiLength, psAnsi, _TRUNCATE);
 				m_psAnsi[stAnsiLength-1] = '\0';
 				}
 			}

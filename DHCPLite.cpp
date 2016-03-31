@@ -350,10 +350,10 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char* const pcsS
 			if(FindOptionData(option_HOSTNAME, pbOptions, iOptionsSize, &pbRequestHostNameData, &iRequestHostNameDataSize))
 				{
 				const size_t stHostNameCopySize = min(iRequestHostNameDataSize, ARRAY_LENGTH(pcsClientHostName)-1);
-				_tcsncpy(pcsClientHostName, (char*)pbRequestHostNameData, stHostNameCopySize);
+				_tcsncpy_s(pcsClientHostName, stHostNameCopySize, (char*)pbRequestHostNameData, _TRUNCATE);
 				pcsClientHostName[stHostNameCopySize] = '\0';
 				}
-			if(('\0' == pcsServerHostName[0]) || (0 != stricmp(pcsClientHostName, pcsServerHostName)))
+			if(('\0' == pcsServerHostName[0]) || (0 != _stricmp(pcsClientHostName, pcsServerHostName)))
 				{
 				// Determine client identifier in proper RFC 2131 order (client identifier option then chaddr)
 				const BYTE* pbRequestClientIdentifierData;
@@ -365,8 +365,8 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char* const pcsS
 					}
 				// Determine if we've seen this client before
 				bool bSeenClientBefore = false;
-				DWORD dwClientPreviousOfferAddr = INADDR_BROADCAST;  // Invalid IP address for later comparison
-				const ClientIdentifierData cid = { pbRequestClientIdentifierData, iRequestClientIdentifierDataSize };
+				DWORD dwClientPreviousOfferAddr = (DWORD)INADDR_BROADCAST;  // Invalid IP address for later comparison
+				const ClientIdentifierData cid = { pbRequestClientIdentifierData, (DWORD)iRequestClientIdentifierDataSize };
 				const int iIndex = pgtcAddressesInUse->GetFilteredThingIndex(AddressInUseInformationClientIdentifierFilter, (void*)(&cid));
 				if(-1 != iIndex)
 					{
@@ -390,7 +390,7 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char* const pcsS
 				pdhcpmReply->flags = pdhcpmRequest->flags;
 				pdhcpmReply->giaddr = pdhcpmRequest->giaddr;
 				CopyMemory(pdhcpmReply->chaddr, pdhcpmRequest->chaddr, sizeof(pdhcpmReply->chaddr));
-				strncpyz((char*)(pdhcpmReply->sname), pcsServerName, sizeof(pdhcpmReply->sname));
+				strncpy_s((char*)(pdhcpmReply->sname), sizeof(pdhcpmReply->sname), pcsServerName, _TRUNCATE);
 				// pdhcpmReply->file = 0;
 				// pdhcpmReply->options below
 				DHCPServerOptions* const pdhcpsoServerOptions = (DHCPServerOptions*)(pdhcpmReply->options);
