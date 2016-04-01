@@ -1,5 +1,5 @@
 #include <windows.h>
-// #include <iphlpapi.h>
+#include <iphlpapi.h>
 #include <iprtrmib.h>
 #include <stdio.h>
 #include "toolbox.h"
@@ -102,25 +102,6 @@ struct DHCPServerOptions
 	};
 #pragma pack(pop)
 #pragma warning(pop)
-
-// VC++ 6.0 SP4 doesn't seem to include a LIB for IPHLPAPI.dll, so load it dynamically
-DWORD GetIpAddrTable
-	(
-	PMIB_IPADDRTABLE pIpAddrTable,  // buffer for mapping table 
-	PULONG pdwSize,                 // size of buffer 
-	BOOL bOrder                     // sort the table 
-	)
-	{
-	DWORD dwReturn = ERROR_INVALID_FUNCTION;
-	LibraryLoader llIPHLPAPI(TEXT("iphlpapi.dll"));
-	typedef DWORD (APIENTRY *pfGetIpAddrTableType)(PMIB_IPADDRTABLE pIpAddrTable, PULONG pdwSize, BOOL bOrder);
-	pfGetIpAddrTableType pGetIpAddrTable = (pfGetIpAddrTableType)(llIPHLPAPI.GetProcedureAddress(TEXT("GetIpAddrTable")));
-	if(0 != pGetIpAddrTable)
-		{
-		dwReturn = pGetIpAddrTable(pIpAddrTable, pdwSize, bOrder);
-		}
-	return dwReturn;
-	}
 
 bool GetIPAddressInformation(DWORD* const pdwAddr, DWORD* const pdwMask, DWORD* const pdwMinAddr, DWORD* const pdwMaxAddr)
 	{
