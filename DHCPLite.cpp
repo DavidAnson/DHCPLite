@@ -139,17 +139,18 @@ bool GetIPAddressInformation(DWORD* const pdwAddr, DWORD* const pdwMask, DWORD* 
 			if((NO_ERROR == dwGetIpAddrTableResult) && (ulIpAddrTableSizeAllocated <= ulIpAddrTableSize))
 				{
 				const MIB_IPADDRTABLE* const pmiatIpAddrTable = (MIB_IPADDRTABLE*)pbIpAddrTableBuffer;
-				if(1 < pmiatIpAddrTable->dwNumEntries)  // Need to have loopback address and at least one other
+				if(2 == pmiatIpAddrTable->dwNumEntries)
 					{
-					// Assume that the last address in the table is always 127.0.0.1 (and therefore not really a valid address for DHCP purposes)
-					ASSERT(DWValuetoIP(0x7f000001) == pmiatIpAddrTable->table[pmiatIpAddrTable->dwNumEntries-1].dwAddr);
-					if(2 == pmiatIpAddrTable->dwNumEntries)
+					const bool loopbackAtIndex0 = DWValuetoIP(0x7f000001) == pmiatIpAddrTable->table[0].dwAddr;
+					const bool loopbackAtIndex1 = DWValuetoIP(0x7f000001) == pmiatIpAddrTable->table[1].dwAddr;
+					if(loopbackAtIndex0 ^ loopbackAtIndex1)
 						{
+						const int tableIndex = loopbackAtIndex1 ? 0 : 1;
 						OUTPUT((TEXT("IP Address being used:")));
-						const DWORD dwAddr = pmiatIpAddrTable->table[0].dwAddr;
+						const DWORD dwAddr = pmiatIpAddrTable->table[tableIndex].dwAddr;
 						if(0 != dwAddr)
 							{
-							const DWORD dwMask = pmiatIpAddrTable->table[0].dwMask;
+							const DWORD dwMask = pmiatIpAddrTable->table[tableIndex].dwMask;
 							const DWORD dwAddrValue = DWIPtoValue(dwAddr);
 							const DWORD dwMaskValue = DWIPtoValue(dwMask);
 							const DWORD dwMinAddrValue = ((dwAddrValue&dwMaskValue)|2);  // Skip x.x.x.1 (default router address)
@@ -182,13 +183,14 @@ bool GetIPAddressInformation(DWORD* const pdwAddr, DWORD* const pdwMask, DWORD* 
 						}
 					else
 						{
-						OUTPUT_ERROR((TEXT("Multiple IP addresses are present on this machine.")));
-						OUTPUT_ERROR((TEXT("[Routing can not be bypassed.]")));
+						OUTPUT_ERROR((TEXT("Unsupported IP address configuration.")));
+						OUTPUT_ERROR((TEXT("[Expected to find loopback address and one other.]")));
 						}
 					}
 				else
 					{
-					OUTPUT_ERROR((TEXT("No non-loopback IP addresses are present on this machine.")));
+					OUTPUT_ERROR((TEXT("Too many or too few IP addresses are present on this machine.")));
+					OUTPUT_ERROR((TEXT("[Routing can not be bypassed.]")));
 					}
 				}
 			else
@@ -349,9 +351,8 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char* const pcsS
 			int iRequestHostNameDataSize;
 			if(FindOptionData(option_HOSTNAME, pbOptions, iOptionsSize, &pbRequestHostNameData, &iRequestHostNameDataSize))
 				{
-				const size_t stHostNameCopySize = min(iRequestHostNameDataSize, ARRAY_LENGTH(pcsClientHostName)-1);
+				const size_t stHostNameCopySize = min(iRequestHostNameDataSize+1, ARRAY_LENGTH(pcsClientHostName));
 				_tcsncpy_s(pcsClientHostName, stHostNameCopySize, (char*)pbRequestHostNameData, _TRUNCATE);
-				pcsClientHostName[stHostNameCopySize] = '\0';
 				}
 			if(('\0' == pcsServerHostName[0]) || (0 != _stricmp(pcsClientHostName, pcsServerHostName)))
 				{
