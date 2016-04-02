@@ -79,7 +79,7 @@ int FindIndexOf(const VectorAddressInUseInformation* const pvAddressesInUse, con
 	{
 		if (pFilter(pvAddressesInUse->at(i), pvFilterData))
 		{
-			return i;
+			return (int)i;
 		}
 	}
 	return -1;
@@ -226,7 +226,7 @@ bool InitializeDHCPServer(SOCKET* const psServerSocket, const DWORD dwServerAddr
 	ASSERT((0 != psServerSocket) && (0 != dwServerAddr) && (0 != pcsServerHostName) && (1 <= stServerHostNameLength));
 	bool bSuccess = false;
 	// Determine server hostname
-	if (0 != gethostname(pcsServerHostName, stServerHostNameLength))
+	if (0 != gethostname(pcsServerHostName, (int)stServerHostNameLength))
 	{
 		pcsServerHostName[0] = '\0';
 	}
@@ -263,7 +263,7 @@ bool InitializeDHCPServer(SOCKET* const psServerSocket, const DWORD dwServerAddr
 	return bSuccess;
 }
 
-bool FindOptionData(const BYTE bOption, const BYTE* const pbOptions, const int iOptionsSize, const BYTE** const ppbOptionData, int* const piOptionDataSize)
+bool FindOptionData(const BYTE bOption, const BYTE* const pbOptions, const int iOptionsSize, const BYTE** const ppbOptionData, unsigned int* const piOptionDataSize)
 {
 	ASSERT(((0 == iOptionsSize) || (0 != pbOptions)) && (0 != ppbOptionData) && (0 != piOptionDataSize) &&
 		(option_PAD != bOption) && (option_END != bOption));
@@ -311,7 +311,7 @@ bool GetDHCPMessageType(const BYTE* const pbOptions, const int iOptionsSize, DHC
 	ASSERT(((0 == iOptionsSize) || (0 != pbOptions)) && (0 != pdhcpmtMessageType));
 	bool bSuccess = false;
 	const BYTE* pbDHCPMessageTypeData;
-	int iDHCPMessageTypeDataSize;
+	unsigned int iDHCPMessageTypeDataSize;
 	if (FindOptionData(option_DHCPMESSAGETYPE, pbOptions, iOptionsSize, &pbDHCPMessageTypeData, &iDHCPMessageTypeDataSize) &&
 		(1 == iDHCPMessageTypeDataSize) && (1 <= *pbDHCPMessageTypeData) && (*pbDHCPMessageTypeData <= 8))
 	{
@@ -350,7 +350,7 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char* const pcsS
 		)
 	{
 		const BYTE* const pbOptions = pdhcpmRequest->options + sizeof(pbDHCPMagicCookie);
-		const int iOptionsSize = iDataSize - sizeof(*pdhcpmRequest) - sizeof(pbDHCPMagicCookie);
+		const int iOptionsSize = iDataSize - (int)sizeof(*pdhcpmRequest) - (int)sizeof(pbDHCPMagicCookie);
 		DHCPMessageTypes dhcpmtMessageType;
 		if (GetDHCPMessageType(pbOptions, iOptionsSize, &dhcpmtMessageType))
 		{
@@ -358,7 +358,7 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char* const pcsS
 			char pcsClientHostName[MAX_HOSTNAME_LENGTH];
 			pcsClientHostName[0] = '\0';
 			const BYTE* pbRequestHostNameData;
-			int iRequestHostNameDataSize;
+			unsigned int iRequestHostNameDataSize;
 			if (FindOptionData(option_HOSTNAME, pbOptions, iOptionsSize, &pbRequestHostNameData, &iRequestHostNameDataSize))
 			{
 				const size_t stHostNameCopySize = min(iRequestHostNameDataSize + 1, ARRAY_LENGTH(pcsClientHostName));
@@ -368,7 +368,7 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char* const pcsS
 			{
 				// Determine client identifier in proper RFC 2131 order (client identifier option then chaddr)
 				const BYTE* pbRequestClientIdentifierData;
-				int iRequestClientIdentifierDataSize;
+				unsigned int iRequestClientIdentifierDataSize;
 				if (!FindOptionData(option_CLIENTIDENTIFIER, pbOptions, iOptionsSize, &pbRequestClientIdentifierData, &iRequestClientIdentifierDataSize))
 				{
 					pbRequestClientIdentifierData = pdhcpmRequest->chaddr;
@@ -381,7 +381,7 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char* const pcsS
 				const int iIndex = FindIndexOf(pvAddressesInUse, AddressInUseInformationClientIdentifierFilter, &cid);
 				if (-1 != iIndex)
 				{
-					const AddressInUseInformation aiui = pvAddressesInUse->at(iIndex);
+					const AddressInUseInformation aiui = pvAddressesInUse->at((size_t)iIndex);
 					dwClientPreviousOfferAddr = DWValuetoIP(aiui.dwAddrValue);
 					bSeenClientBefore = true;
 				}
@@ -510,14 +510,14 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char* const pcsS
 					// Determine requested IP address
 					DWORD dwRequestedIPAddress = INADDR_BROADCAST;  // Invalid IP address for later comparison
 					const BYTE* pbRequestRequestedIPAddressData = 0;
-					int iRequestRequestedIPAddressDataSize = 0;
+					unsigned int iRequestRequestedIPAddressDataSize = 0;
 					if (FindOptionData(option_REQUESTEDIPADDRESS, pbOptions, iOptionsSize, &pbRequestRequestedIPAddressData, &iRequestRequestedIPAddressDataSize) && (sizeof(dwRequestedIPAddress) == iRequestRequestedIPAddressDataSize))
 					{
 						dwRequestedIPAddress = *((DWORD*)pbRequestRequestedIPAddressData);
 					}
 					// Determine server identifier
 					const BYTE* pbRequestServerIdentifierData = 0;
-					int iRequestServerIdentifierDataSize = 0;
+					unsigned int iRequestServerIdentifierDataSize = 0;
 					if (FindOptionData(option_SERVERIDENTIFIER, pbOptions, iOptionsSize, &pbRequestServerIdentifierData, &iRequestServerIdentifierDataSize) &&
 						(sizeof(dwServerAddr) == iRequestServerIdentifierDataSize) && (dwServerAddr == *((DWORD*)pbRequestServerIdentifierData)))
 					{
