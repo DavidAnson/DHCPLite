@@ -743,8 +743,8 @@ int main(int /*argc*/, char** /*argv*/)
 {
 	OUTPUT((TEXT("")));
 	OUTPUT((TEXT("DHCPLite")));
-	OUTPUT((TEXT("2001-10-31")));
-	OUTPUT((TEXT("Copyright (c) 2001 by David L. A. Anson (DavidAns@Microsoft.com)")));
+	OUTPUT((TEXT("2016-04-02")));
+	OUTPUT((TEXT("Copyright (c) 2001-2016 by David Anson (http://dlaa.me/)")));
 	OUTPUT((TEXT("")));
 	if (SetConsoleCtrlHandler(ConsoleCtrlHandlerRoutine, TRUE))
 	{
