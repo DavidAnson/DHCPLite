@@ -2,6 +2,7 @@
 #include <iphlpapi.h>
 #include <iprtrmib.h>
 #include <stdio.h>
+#include <vector>
 #include "toolbox.h"
 
 const TCHAR ptsCRLF[] = TEXT("\r\n");
@@ -68,6 +69,34 @@ struct AddressInUseInformation
 	DWORD dwClientIdentifierSize;
 	// SYSTEMTIME stExpireTime;  // If lease timeouts are needed
 	};
+typedef std::vector<AddressInUseInformation> VectorAddressInUseInformation;
+
+typedef bool (*FindIndexOfFilter)(const AddressInUseInformation& raiui, const void* const pvFilterData);
+int FindIndexOf(const VectorAddressInUseInformation* const pvAddressesInUse, const FindIndexOfFilter pFilter, const void* const pvFilterData)
+	{
+	ASSERT((0 != pvAddressesInUse) && (0 != pFilter) && (0 != pvFilterData));
+	for(size_t i = 0; i < pvAddressesInUse->size(); i++)
+		{
+		if(pFilter(pvAddressesInUse->at(i), pvFilterData))
+			{
+			return i;
+			}
+		}
+	return -1;
+	}
+bool PushBack(VectorAddressInUseInformation* const pvAddressesInUse, const AddressInUseInformation* const paiui)
+	{
+	ASSERT((0 != pvAddressesInUse) && (0 != paiui));
+	try
+		{
+		pvAddressesInUse->push_back(*paiui);
+		}
+	catch(const std::bad_alloc)
+		{
+		return false;
+		}
+	return true;
+	}
 
 // RFC 2131 section 2
 #pragma warning(push)
@@ -292,10 +321,10 @@ bool GetDHCPMessageType(const BYTE* const pbOptions, const int iOptionsSize, DHC
 	return bSuccess;
 	}
 
-bool AddressInUseInformationAddrValueFilter(const AddressInUseInformation& raiui, void* pvFilterData)
+bool AddressInUseInformationAddrValueFilter(const AddressInUseInformation& raiui, const void* const pvFilterData)
 	{
-	const DWORD dwAddrValue = (DWORD)pvFilterData;
-	return (dwAddrValue == raiui.dwAddrValue);
+	const DWORD* const pdwAddrValue = (DWORD*)pvFilterData;
+	return (*pdwAddrValue == raiui.dwAddrValue);
 	}
 
 struct ClientIdentifierData
@@ -303,16 +332,16 @@ struct ClientIdentifierData
 	const BYTE* pbClientIdentifier;
 	DWORD dwClientIdentifierSize;
 	};
-bool AddressInUseInformationClientIdentifierFilter(const AddressInUseInformation& raiui, void* pvFilterData)
+bool AddressInUseInformationClientIdentifierFilter(const AddressInUseInformation& raiui, const void* const pvFilterData)
 	{
 	const ClientIdentifierData* const pcid = (ClientIdentifierData*)pvFilterData;
 	ASSERT(0 != pcid);
 	return ((0 != raiui.dwClientIdentifierSize) && (pcid->dwClientIdentifierSize == raiui.dwClientIdentifierSize) && (0 == memcmp(pcid->pbClientIdentifier, raiui.pbClientIdentifier, pcid->dwClientIdentifierSize)));
 	}
 
-void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char* const pcsServerHostName, const BYTE* const pbData, const int iDataSize, GrowableThingCollection<AddressInUseInformation>* const pgtcAddressesInUse, const DWORD dwServerAddr, const DWORD dwMask, const DWORD dwMinAddr, const DWORD dwMaxAddr)
+void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char* const pcsServerHostName, const BYTE* const pbData, const int iDataSize, VectorAddressInUseInformation* const pvAddressesInUse, const DWORD dwServerAddr, const DWORD dwMask, const DWORD dwMinAddr, const DWORD dwMaxAddr)
 	{
-	ASSERT((INVALID_SOCKET != sServerSocket) && (0 != pcsServerHostName) && ((0 == iDataSize) || (0 != pbData)) && (0 != pgtcAddressesInUse) && (0 != dwServerAddr) && (0 != dwMask) && (0 != dwMinAddr) && (0 != dwMaxAddr));
+	ASSERT((INVALID_SOCKET != sServerSocket) && (0 != pcsServerHostName) && ((0 == iDataSize) || (0 != pbData)) && (0 != pvAddressesInUse) && (0 != dwServerAddr) && (0 != dwMask) && (0 != dwMinAddr) && (0 != dwMaxAddr));
 	const DHCPMessage* const pdhcpmRequest = (DHCPMessage*)pbData;
 	if((((sizeof(*pdhcpmRequest)+sizeof(pbDHCPMagicCookie)) <= iDataSize) &&  // Take into account mandatory DHCP magic cookie values in options array (RFC 2131 section 3)
 	    (op_BOOTREQUEST == pdhcpmRequest->op) &&
@@ -349,10 +378,10 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char* const pcsS
 				bool bSeenClientBefore = false;
 				DWORD dwClientPreviousOfferAddr = (DWORD)INADDR_BROADCAST;  // Invalid IP address for later comparison
 				const ClientIdentifierData cid = { pbRequestClientIdentifierData, (DWORD)iRequestClientIdentifierDataSize };
-				const int iIndex = pgtcAddressesInUse->GetFilteredThingIndex(AddressInUseInformationClientIdentifierFilter, (void*)(&cid));
+				const int iIndex = FindIndexOf(pvAddressesInUse, AddressInUseInformationClientIdentifierFilter, &cid);
 				if(-1 != iIndex)
 					{
-					const AddressInUseInformation aiui = pgtcAddressesInUse->GetThingAtIndex(iIndex);
+					const AddressInUseInformation aiui = pvAddressesInUse->at(iIndex);
 					dwClientPreviousOfferAddr = DWValuetoIP(aiui.dwAddrValue);
 					bSeenClientBefore = true;
 					}
@@ -428,7 +457,7 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char* const pcsS
 								ASSERT(dwMaxAddrValue+1 == dwOfferAddrValue);
 								dwOfferAddrValue = dwMinAddrValue;
 								}
-							bOfferAddrValueValid = (-1 == pgtcAddressesInUse->GetFilteredThingIndex(AddressInUseInformationAddrValueFilter, (void*)dwOfferAddrValue));
+							bOfferAddrValueValid = (-1 == FindIndexOf(pvAddressesInUse, AddressInUseInformationAddrValueFilter, &dwOfferAddrValue));
 							bOfferedInitialValue = true;
 							if(!bOfferAddrValueValid)
 								{
@@ -447,7 +476,7 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char* const pcsS
 								{
 								CopyMemory(aiuiClientAddress.pbClientIdentifier, pbRequestClientIdentifierData, iRequestClientIdentifierDataSize);
 								aiuiClientAddress.dwClientIdentifierSize = iRequestClientIdentifierDataSize;
-								if(pgtcAddressesInUse->AddThing(aiuiClientAddress))
+								if(bSeenClientBefore || PushBack(pvAddressesInUse, &aiuiClientAddress))
 									{
 									pdhcpmReply->yiaddr = dwOfferAddr;
 									pdhcpsoServerOptions->pbMessageType[2] = DHCPMessageType_OFFER;
@@ -458,6 +487,10 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char* const pcsS
 									{
 									VERIFY(0 == LocalFree(aiuiClientAddress.pbClientIdentifier));
 									OUTPUT_ERROR((TEXT("Insufficient memory to add client address.")));
+									}
+								if(bSeenClientBefore)
+									{
+									VERIFY(0 == LocalFree(aiuiClientAddress.pbClientIdentifier));
 									}
 								}
 							else
@@ -643,9 +676,9 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char* const pcsS
 		}
 	}
 
-bool ReadDHCPClientRequests(const SOCKET sServerSocket, const char* const pcsServerHostName, GrowableThingCollection<AddressInUseInformation>* const pgtcAddressesInUse, const DWORD dwServerAddr, const DWORD dwMask, const DWORD dwMinAddr, const DWORD dwMaxAddr)
+bool ReadDHCPClientRequests(const SOCKET sServerSocket, const char* const pcsServerHostName, VectorAddressInUseInformation* const pvAddressesInUse, const DWORD dwServerAddr, const DWORD dwMask, const DWORD dwMinAddr, const DWORD dwMaxAddr)
 	{
-	ASSERT((INVALID_SOCKET != sServerSocket) && (0 != pcsServerHostName) && (0 != pgtcAddressesInUse) && (0 != dwServerAddr) && (0 != dwMask) && (0 != dwMinAddr) && (0 != dwMaxAddr));
+	ASSERT((INVALID_SOCKET != sServerSocket) && (0 != pcsServerHostName) && (0 != pvAddressesInUse) && (0 != dwServerAddr) && (0 != dwMask) && (0 != dwMinAddr) && (0 != dwMaxAddr));
 	bool bSuccess = false;
 	BYTE* const pbReadBuffer = (BYTE*)LocalAlloc(LMEM_FIXED, MAX_UDP_MESSAGE_SIZE);
 	if(0 != pbReadBuffer)
@@ -661,7 +694,7 @@ bool ReadDHCPClientRequests(const SOCKET sServerSocket, const char* const pcsSer
 			if(SOCKET_ERROR != iBytesReceived)
 				{
 				// ASSERT(DHCP_CLIENT_PORT == ntohs(saClientAddress.sin_port));  // Not always the case
-				ProcessDHCPClientRequest(sServerSocket, pcsServerHostName, pbReadBuffer, iBytesReceived, pgtcAddressesInUse, dwServerAddr, dwMask, dwMinAddr, dwMaxAddr);
+				ProcessDHCPClientRequest(sServerSocket, pcsServerHostName, pbReadBuffer, iBytesReceived, pvAddressesInUse, dwServerAddr, dwMask, dwMinAddr, dwMaxAddr);
 				}
 			else
 				{
@@ -722,12 +755,12 @@ int main(int /*argc*/, char** /*argv*/)
 		if(GetIPAddressInformation(&dwServerAddr, &dwMask, &dwMinAddr, &dwMaxAddr))
 			{
 			ASSERT((DWValuetoIP(dwMinAddr) <= DWValuetoIP(dwServerAddr)) && (DWValuetoIP(dwServerAddr) <= DWValuetoIP(dwMaxAddr)));
-			GrowableThingCollection<AddressInUseInformation> gtcAddressesInUse;
+			VectorAddressInUseInformation vAddressesInUse;
 			AddressInUseInformation aiuiServerAddress;
 			aiuiServerAddress.dwAddrValue = DWIPtoValue(dwServerAddr);
 			aiuiServerAddress.pbClientIdentifier = 0;  // Server entry is only entry without a client ID
 			aiuiServerAddress.dwClientIdentifierSize = 0;
-			if(gtcAddressesInUse.AddThing(aiuiServerAddress))
+			if(PushBack(&vAddressesInUse, &aiuiServerAddress))
 				{
 				WSADATA wsaData;
 				if(0 == WSAStartup(MAKEWORD(1, 1), &wsaData))
@@ -738,7 +771,7 @@ int main(int /*argc*/, char** /*argv*/)
 					char pcsServerHostName[MAX_HOSTNAME_LENGTH];
 					if(InitializeDHCPServer(&sServerSocket, dwServerAddr, pcsServerHostName, ARRAY_LENGTH(pcsServerHostName)))
 						{
-						VERIFY(ReadDHCPClientRequests(sServerSocket, pcsServerHostName, &gtcAddressesInUse, dwServerAddr, dwMask, dwMinAddr, dwMaxAddr));
+						VERIFY(ReadDHCPClientRequests(sServerSocket, pcsServerHostName, &vAddressesInUse, dwServerAddr, dwMask, dwMinAddr, dwMaxAddr));
 						if(INVALID_SOCKET != sServerSocket)
 							{
 							VERIFY(0 == closesocket(sServerSocket));
@@ -760,21 +793,13 @@ int main(int /*argc*/, char** /*argv*/)
 				{
 				OUTPUT_ERROR((TEXT("Insufficient memory to add server address.")));
 				}
-			if(gtcAddressesInUse.Lock())
+			for(size_t i = 0; i < vAddressesInUse.size(); i++)
 				{
-				for(int i = gtcAddressesInUse.GetSize()-1 ; 0 <= i ; i--)
+				aiuiServerAddress = vAddressesInUse.at(i);
+				if(0 != aiuiServerAddress.pbClientIdentifier)
 					{
-					const AddressInUseInformation* const paiuiServerAddress = gtcAddressesInUse.GetPointerToThingAtIndex(i);
-					if(0 != paiuiServerAddress->pbClientIdentifier)
-						{
-						VERIFY(0 == LocalFree(paiuiServerAddress->pbClientIdentifier));
-						}
+					VERIFY(0 == LocalFree(aiuiServerAddress.pbClientIdentifier));
 					}
-				gtcAddressesInUse.Unlock();
-				}
-			else
-				{
-				OUTPUT_ERROR((TEXT("Unable to lock collection.")));
 				}
 			}
 		else
