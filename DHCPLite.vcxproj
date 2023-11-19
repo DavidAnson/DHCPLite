@@ -154,10 +154,12 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="DHCPLite.h" />
     <ClInclude Include="ToolBox.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="DHCPLite.cpp" />
+    <ClCompile Include="main.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

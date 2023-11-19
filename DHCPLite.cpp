@@ -1,75 +1,10 @@
+#include "DHCPLite.h"
 #include <windows.h>
 #include <iphlpapi.h>
 #include <iprtrmib.h>
-#include <stdio.h>
-#include <vector>
-#include "toolbox.h"
-
-const TCHAR ptsCRLF[] = TEXT("\r\n");
-const TCHAR ptsERRORPrefix[] = TEXT("ERROR %d: ");
-#define OUTPUT(x) printf x; printf(ptsCRLF)
-#define OUTPUT_ERROR(x) printf(ptsERRORPrefix, __LINE__); printf x; printf(ptsCRLF);
-#define OUTPUT_WARNING(x) ASSERT(!x)
-#define DWIP0(dw) (((dw)>> 0) & 0xff)
-#define DWIP1(dw) (((dw)>> 8) & 0xff)
-#define DWIP2(dw) (((dw)>>16) & 0xff)
-#define DWIP3(dw) (((dw)>>24) & 0xff)
-#define DWIPtoValue(dw) ((DWIP0(dw)<<24) | (DWIP1(dw)<<16) | (DWIP2(dw)<<8) | DWIP3(dw))
-#define DWValuetoIP(dw) ((DWIP0(dw)<<24) | (DWIP1(dw)<<16) | (DWIP2(dw)<<8) | DWIP3(dw))
-
-const char pcsServerName[] = "DHCPLite DHCP server";
-
-// Maximum size of a UDP datagram (see RFC 768)
-#define MAX_UDP_MESSAGE_SIZE ((65536)-8)
-// DHCP constants (see RFC 2131 section 4.1)
-#define DHCP_SERVER_PORT (67)
-#define DHCP_CLIENT_PORT (68)
-// Broadcast bit for flags field (RFC 2131 section 2)
-#define BROADCAST_FLAG (0x80)
-// For display of host name information
-#define MAX_HOSTNAME_LENGTH (256)
-// RFC 2131 section 2
-enum op_values
-{
-	op_BOOTREQUEST = 1,
-	op_BOOTREPLY = 2,
-};
-// RFC 2132 section 9.6
-enum option_values
-{
-	option_PAD = 0,
-	option_SUBNETMASK = 1,
-	option_HOSTNAME = 12,
-	option_REQUESTEDIPADDRESS = 50,
-	option_IPADDRESSLEASETIME = 51,
-	option_DHCPMESSAGETYPE = 53,
-	option_SERVERIDENTIFIER = 54,
-	option_CLIENTIDENTIFIER = 61,
-	option_END = 255,
-};
-enum DHCPMessageTypes
-{
-	DHCPMessageType_DISCOVER = 1,
-	DHCPMessageType_OFFER = 2,
-	DHCPMessageType_REQUEST = 3,
-	DHCPMessageType_DECLINE = 4,
-	DHCPMessageType_ACK = 5,
-	DHCPMessageType_NAK = 6,
-	DHCPMessageType_RELEASE = 7,
-	DHCPMessageType_INFORM = 8,
-};
 
 // DHCP magic cookie values
 const BYTE pbDHCPMagicCookie[] = { 99, 130, 83, 99 };
-
-struct AddressInUseInformation
-{
-	DWORD dwAddrValue;
-	BYTE* pbClientIdentifier;
-	DWORD dwClientIdentifierSize;
-	// SYSTEMTIME stExpireTime;  // If lease timeouts are needed
-};
-typedef std::vector<AddressInUseInformation> VectorAddressInUseInformation;
 
 typedef bool(*FindIndexOfFilter)(const AddressInUseInformation& raiui, const void* const pvFilterData);
 int FindIndexOf(const VectorAddressInUseInformation* const pvAddressesInUse, const FindIndexOfFilter pFilter, const void* const pvFilterData)
@@ -84,15 +19,13 @@ int FindIndexOf(const VectorAddressInUseInformation* const pvAddressesInUse, con
 	}
 	return -1;
 }
-bool PushBack(VectorAddressInUseInformation* const pvAddressesInUse, const AddressInUseInformation* const paiui)
-{
+
+bool PushBack(VectorAddressInUseInformation *const pvAddressesInUse, const AddressInUseInformation *const paiui) {
 	ASSERT((0 != pvAddressesInUse) && (0 != paiui));
-	try
-	{
+	try {
 		pvAddressesInUse->push_back(*paiui);
 	}
-	catch (const std::bad_alloc)
-	{
+	catch (const std::bad_alloc) {
 		return false;
 	}
 	return true;
@@ -720,97 +653,4 @@ bool ReadDHCPClientRequests(const SOCKET sServerSocket, const char* const pcsSer
 		OUTPUT_ERROR((TEXT("Unable to allocate memory for client datagram read buffer.")));
 	}
 	return bSuccess;
-}
-
-SOCKET sServerSocket = INVALID_SOCKET;  // Global to allow ConsoleCtrlHandlerRoutine access to it
-
-BOOL WINAPI ConsoleCtrlHandlerRoutine(DWORD dwCtrlType)
-{
-	BOOL bReturn = FALSE;
-	if ((CTRL_C_EVENT == dwCtrlType) || (CTRL_BREAK_EVENT == dwCtrlType))
-	{
-		if (INVALID_SOCKET != sServerSocket)
-		{
-			VERIFY(0 == closesocket(sServerSocket));
-			sServerSocket = INVALID_SOCKET;
-		}
-		bReturn = TRUE;
-	}
-	return bReturn;
-}
-
-int main(int /*argc*/, char** /*argv*/)
-{
-	OUTPUT((TEXT("")));
-	OUTPUT((TEXT("DHCPLite")));
-	OUTPUT((TEXT("2016-04-02")));
-	OUTPUT((TEXT("Copyright (c) 2001-2016 by David Anson (http://dlaa.me/)")));
-	OUTPUT((TEXT("")));
-	if (SetConsoleCtrlHandler(ConsoleCtrlHandlerRoutine, TRUE))
-	{
-		DWORD dwServerAddr;
-		DWORD dwMask;
-		DWORD dwMinAddr;
-		DWORD dwMaxAddr;
-		if (GetIPAddressInformation(&dwServerAddr, &dwMask, &dwMinAddr, &dwMaxAddr))
-		{
-			ASSERT((DWValuetoIP(dwMinAddr) <= DWValuetoIP(dwServerAddr)) && (DWValuetoIP(dwServerAddr) <= DWValuetoIP(dwMaxAddr)));
-			VectorAddressInUseInformation vAddressesInUse;
-			AddressInUseInformation aiuiServerAddress;
-			aiuiServerAddress.dwAddrValue = DWIPtoValue(dwServerAddr);
-			aiuiServerAddress.pbClientIdentifier = 0;  // Server entry is only entry without a client ID
-			aiuiServerAddress.dwClientIdentifierSize = 0;
-			if (PushBack(&vAddressesInUse, &aiuiServerAddress))
-			{
-				WSADATA wsaData;
-				if (0 == WSAStartup(MAKEWORD(1, 1), &wsaData))
-				{
-					OUTPUT((TEXT("")));
-					OUTPUT((TEXT("Server is running...  (Press Ctrl+C to shutdown.)")));
-					OUTPUT((TEXT("")));
-					char pcsServerHostName[MAX_HOSTNAME_LENGTH];
-					if (InitializeDHCPServer(&sServerSocket, dwServerAddr, pcsServerHostName, ARRAY_LENGTH(pcsServerHostName)))
-					{
-						VERIFY(ReadDHCPClientRequests(sServerSocket, pcsServerHostName, &vAddressesInUse, dwServerAddr, dwMask, dwMinAddr, dwMaxAddr));
-						if (INVALID_SOCKET != sServerSocket)
-						{
-							VERIFY(0 == closesocket(sServerSocket));
-							sServerSocket = INVALID_SOCKET;
-						}
-					}
-					else
-					{
-						// OUTPUT_ERROR called by InitializeDHCPServer
-					}
-					VERIFY(0 == WSACleanup());
-				}
-				else
-				{
-					OUTPUT_ERROR((TEXT("Unable to initialize WinSock.")));
-				}
-			}
-			else
-			{
-				OUTPUT_ERROR((TEXT("Insufficient memory to add server address.")));
-			}
-			for (size_t i = 0; i < vAddressesInUse.size(); i++)
-			{
-				aiuiServerAddress = vAddressesInUse.at(i);
-				if (0 != aiuiServerAddress.pbClientIdentifier)
-				{
-					VERIFY(0 == LocalFree(aiuiServerAddress.pbClientIdentifier));
-				}
-			}
-		}
-		else
-		{
-			// OUTPUT_ERROR called by GetIPAddressInformation
-		}
-	}
-	else
-	{
-		OUTPUT_ERROR((TEXT("Unable to set Ctrl-C handler.")));
-	}
-	system("pause");
-	return 0;
 }
