@@ -1,25 +1,13 @@
 #pragma once
-#include <tchar.h>
 #include <vector>
+#include <tchar.h>
 #include <assert.h>
 #include <windows.h>
 
-#define ASSERT(e) assert(e)
-
-// Provide a verify macro for all environments
-#if !defined(VERIFY)
-#if defined(DEBUG) || defined(_DEBUG)
-#define VERIFY(e) ASSERT(e)
-#else  // defined(DEBUG) || defined(_DEBUG)
-#define VERIFY(e) ((void)(e))
-#endif  // defined(DEBUG) || defined(_DEBUG)
-#endif  // !defined(VERIFY)
-
 const TCHAR ptsCRLF[] = "\r\n";
-const TCHAR ptsERRORPrefix[] = "ERROR %d: ";
 #define OUTPUT(x) printf x; printf(ptsCRLF)
-#define OUTPUT_ERROR(x) printf(ptsERRORPrefix, __LINE__); printf x; printf(ptsCRLF);
-#define OUTPUT_WARNING(x) ASSERT(!x)
+#define OUTPUT_ERROR(x) printf("ERROR %d: ", __LINE__); printf x; printf(ptsCRLF);
+
 #define DWIP0(dw) (((dw)>> 0) & 0xff)
 #define DWIP1(dw) (((dw)>> 8) & 0xff)
 #define DWIP2(dw) (((dw)>>16) & 0xff)

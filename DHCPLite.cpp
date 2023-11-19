@@ -4,7 +4,7 @@
 
 typedef bool(*FindIndexOfFilter)(const AddressInUseInformation &raiui, const void *const pvFilterData);
 int FindIndexOf(const VectorAddressInUseInformation *const pvAddressesInUse, const FindIndexOfFilter pFilter, const void *const pvFilterData) {
-	ASSERT((0 != pvAddressesInUse) && (0 != pFilter) && (0 != pvFilterData));
+ 	assert((0 != pvAddressesInUse) && (0 != pFilter) && (0 != pvFilterData));
 	for (size_t i = 0; i < pvAddressesInUse->size(); i++) {
 		if (pFilter(pvAddressesInUse->at(i), pvFilterData)) {
 			return (int)i;
@@ -14,7 +14,7 @@ int FindIndexOf(const VectorAddressInUseInformation *const pvAddressesInUse, con
 }
 
 bool PushBack(VectorAddressInUseInformation *const pvAddressesInUse, const AddressInUseInformation *const paiui) {
-	ASSERT((0 != pvAddressesInUse) && (0 != paiui));
+ 	assert((0 != pvAddressesInUse) && (0 != paiui));
 	try {
 		pvAddressesInUse->push_back(*paiui);
 	}
@@ -25,7 +25,7 @@ bool PushBack(VectorAddressInUseInformation *const pvAddressesInUse, const Addre
 }
 
 bool GetIPAddressInformation(DWORD *const pdwAddr, DWORD *const pdwMask, DWORD *const pdwMinAddr, DWORD *const pdwMaxAddr) {
-	ASSERT((0 != pdwAddr) && (0 != pdwMask) && (0 != pdwMinAddr) && (0 != pdwMaxAddr));
+ 	assert((0 != pdwAddr) && (0 != pdwMask) && (0 != pdwMinAddr) && (0 != pdwMaxAddr));
 	bool bSuccess = false;
 	MIB_IPADDRTABLE miatIpAddrTable;
 	ULONG ulIpAddrTableSize = sizeof(miatIpAddrTable);
@@ -87,7 +87,7 @@ bool GetIPAddressInformation(DWORD *const pdwAddr, DWORD *const pdwMask, DWORD *
 			else {
 				OUTPUT_ERROR((TEXT("Unable to query IP address table.")));
 			}
-			VERIFY(0 == LocalFree(pbIpAddrTableBuffer));
+		 	assert(0 == LocalFree(pbIpAddrTableBuffer));
 		}
 		else {
 			OUTPUT_ERROR((TEXT("Insufficient memory for IP address table.")));
@@ -100,7 +100,7 @@ bool GetIPAddressInformation(DWORD *const pdwAddr, DWORD *const pdwMask, DWORD *
 }
 
 bool InitializeDHCPServer(SOCKET *const psServerSocket, const DWORD dwServerAddr, char *const pcsServerHostName, const size_t stServerHostNameLength) {
-	ASSERT((0 != psServerSocket) && (0 != dwServerAddr) && (0 != pcsServerHostName) && (1 <= stServerHostNameLength));
+ 	assert((0 != psServerSocket) && (0 != dwServerAddr) && (0 != pcsServerHostName) && (1 <= stServerHostNameLength));
 	bool bSuccess = false;
 	// Determine server hostname
 	if (0 != gethostname(pcsServerHostName, (int)stServerHostNameLength)) {
@@ -134,7 +134,7 @@ bool InitializeDHCPServer(SOCKET *const psServerSocket, const DWORD dwServerAddr
 }
 
 bool FindOptionData(const BYTE bOption, const BYTE *const pbOptions, const int iOptionsSize, const BYTE **const ppbOptionData, unsigned int *const piOptionDataSize) {
-	ASSERT(((0 == iOptionsSize) || (0 != pbOptions)) && (0 != ppbOptionData) && (0 != piOptionDataSize) &&
+ 	assert(((0 == iOptionsSize) || (0 != pbOptions)) && (0 != ppbOptionData) && (0 != piOptionDataSize) &&
 		(option_PAD != bOption) && (option_END != bOption));
 	bool bSuccess = false;
 	// RFC 2132
@@ -161,7 +161,7 @@ bool FindOptionData(const BYTE bOption, const BYTE *const pbOptions, const int i
 				pbCurrentOption += bCurrentOptionLen;
 			}
 			else {
-				OUTPUT_WARNING((TEXT("Invalid option data (not enough room for required length byte).")));
+				assert(!(TEXT("Invalid option data (not enough room for required length byte).")));
 			}
 		}
 	}
@@ -169,7 +169,7 @@ bool FindOptionData(const BYTE bOption, const BYTE *const pbOptions, const int i
 }
 
 bool GetDHCPMessageType(const BYTE *const pbOptions, const int iOptionsSize, DHCPMessageTypes *const pdhcpmtMessageType) {
-	ASSERT(((0 == iOptionsSize) || (0 != pbOptions)) && (0 != pdhcpmtMessageType));
+ 	assert(((0 == iOptionsSize) || (0 != pbOptions)) && (0 != pdhcpmtMessageType));
 	bool bSuccess = false;
 	const BYTE *pbDHCPMessageTypeData;
 	unsigned int iDHCPMessageTypeDataSize;
@@ -188,7 +188,7 @@ bool AddressInUseInformationAddrValueFilter(const AddressInUseInformation &raiui
 
 bool AddressInUseInformationClientIdentifierFilter(const AddressInUseInformation &raiui, const void *const pvFilterData) {
 	const ClientIdentifierData *const pcid = (ClientIdentifierData *)pvFilterData;
-	ASSERT(0 != pcid);
+ 	assert(0 != pcid);
 	return ((0 != raiui.dwClientIdentifierSize) && (pcid->dwClientIdentifierSize == raiui.dwClientIdentifierSize) && (0 == memcmp(pcid->pbClientIdentifier, raiui.pbClientIdentifier, pcid->dwClientIdentifierSize)));
 }
 
@@ -196,7 +196,7 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char *const pcsS
 	// DHCP magic cookie values
 	const BYTE pbDHCPMagicCookie[] = { 99, 130, 83, 99 };
 
-	ASSERT((INVALID_SOCKET != sServerSocket) && (0 != pcsServerHostName) && ((0 == iDataSize) || (0 != pbData)) && (0 != pvAddressesInUse) && (0 != dwServerAddr) && (0 != dwMask) && (0 != dwMinAddr) && (0 != dwMaxAddr));
+ 	assert((INVALID_SOCKET != sServerSocket) && (0 != pcsServerHostName) && ((0 == iDataSize) || (0 != pbData)) && (0 != pvAddressesInUse) && (0 != dwServerAddr) && (0 != dwMask) && (0 != dwMinAddr) && (0 != dwMaxAddr));
 	const DHCPMessage *const pdhcpmRequest = (DHCPMessage *)pbData;
 	if ((((sizeof(*pdhcpmRequest) + sizeof(pbDHCPMagicCookie)) <= iDataSize) &&  // Take into account mandatory DHCP magic cookie values in options array (RFC 2131 section 3)
 		(op_BOOTREQUEST == pdhcpmRequest->op) &&
@@ -299,7 +299,7 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char *const pcsS
 					while (!bOfferAddrValueValid && !(bOfferedInitialValue && (dwInitialOfferAddrValue == dwOfferAddrValue)))  // Detect address exhaustion
 					{
 						if (dwMaxAddrValue < dwOfferAddrValue) {
-							ASSERT(dwMaxAddrValue + 1 == dwOfferAddrValue);
+						 	assert(dwMaxAddrValue + 1 == dwOfferAddrValue);
 							dwOfferAddrValue = dwMinAddrValue;
 						}
 						bOfferAddrValueValid = (-1 == FindIndexOf(pvAddressesInUse, AddressInUseInformationAddrValueFilter, &dwOfferAddrValue));
@@ -311,7 +311,7 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char *const pcsS
 					if (bOfferAddrValueValid) {
 						dwServerLastOfferAddrValue = dwOfferAddrValue;
 						const DWORD dwOfferAddr = DWValuetoIP(dwOfferAddrValue);
-						ASSERT((0 != iRequestClientIdentifierDataSize) && (0 != pbRequestClientIdentifierData));
+					 	assert((0 != iRequestClientIdentifierDataSize) && (0 != pbRequestClientIdentifierData));
 						AddressInUseInformation aiuiClientAddress;
 						aiuiClientAddress.dwAddrValue = dwOfferAddrValue;
 						aiuiClientAddress.pbClientIdentifier = (BYTE *)LocalAlloc(LMEM_FIXED, iRequestClientIdentifierDataSize);
@@ -325,11 +325,11 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char *const pcsS
 								OUTPUT((TEXT("Offering client \"%hs\" IP address %d.%d.%d.%d"), pcsClientHostName, DWIP0(dwOfferAddr), DWIP1(dwOfferAddr), DWIP2(dwOfferAddr), DWIP3(dwOfferAddr)));
 							}
 							else {
-								VERIFY(0 == LocalFree(aiuiClientAddress.pbClientIdentifier));
+							 	assert(0 == LocalFree(aiuiClientAddress.pbClientIdentifier));
 								OUTPUT_ERROR((TEXT("Insufficient memory to add client address.")));
 							}
 							if (bSeenClientBefore) {
-								VERIFY(0 == LocalFree(aiuiClientAddress.pbClientIdentifier));
+							 	assert(0 == LocalFree(aiuiClientAddress.pbClientIdentifier));
 							}
 						}
 						else {
@@ -358,7 +358,7 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char *const pcsS
 						(sizeof(dwServerAddr) == iRequestServerIdentifierDataSize) && (dwServerAddr == *((DWORD *)pbRequestServerIdentifierData))) {
 						// Response to OFFER
 						// DHCPREQUEST generated during SELECTING state
-						ASSERT(0 == pdhcpmRequest->ciaddr);
+					 	assert(0 == pdhcpmRequest->ciaddr);
 						if (bSeenClientBefore) {
 							// Already have an IP address for this client - ACK it
 							pdhcpsoServerOptions->pbMessageType[2] = DHCPMessageType_ACK;
@@ -387,12 +387,12 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char *const pcsS
 							}
 						}
 						else {
-							OUTPUT_WARNING((TEXT("Invalid DHCP message (invalid data).")));
+							assert(!(TEXT("Invalid DHCP message (invalid data).")));
 						}
 					}
 					switch (pdhcpsoServerOptions->pbMessageType[2]) {
 					case DHCPMessageType_ACK:
-						ASSERT(INADDR_BROADCAST != dwClientPreviousOfferAddr);
+					 	assert(INADDR_BROADCAST != dwClientPreviousOfferAddr);
 						pdhcpmReply->ciaddr = dwClientPreviousOfferAddr;
 						pdhcpmReply->yiaddr = dwClientPreviousOfferAddr;
 						bSendDHCPMessage = true;
@@ -422,14 +422,14 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char *const pcsS
 				case DHCPMessageType_OFFER:
 				case DHCPMessageType_ACK:
 				case DHCPMessageType_NAK:
-					OUTPUT_WARNING((TEXT("Unexpected DHCP message type.")));
+					assert(!(TEXT("Unexpected DHCP message type.")));
 					break;
 				default:
-					ASSERT(!"Invalid DHCPMessageType");
+				 	assert(!"Invalid DHCPMessageType");
 					break;
 				}
 				if (bSendDHCPMessage) {
-					ASSERT(0 != pdhcpsoServerOptions->pbMessageType[2]);  // Must have set an option if we're going to be sending this message
+				 	assert(0 != pdhcpsoServerOptions->pbMessageType[2]);  // Must have set an option if we're going to be sending this message
 					// Determine how to send the reply
 					// RFC 2131 section 4.1
 					u_long ulAddr = INADDR_LOOPBACK;  // Invalid value
@@ -463,7 +463,7 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char *const pcsS
 						}
 						break;
 						default:
-							ASSERT(!"Invalid DHCPMessageType");
+						 	assert(!"Invalid DHCPMessageType");
 							break;
 						}
 					}
@@ -471,12 +471,12 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char *const pcsS
 						ulAddr = pdhcpmRequest->giaddr;  // Already in network order
 						pdhcpmReply->flags |= BROADCAST_FLAG;  // Indicate to the relay agent that it must broadcast
 					}
-					ASSERT((INADDR_LOOPBACK != ulAddr) && (0 != ulAddr));
+				 	assert((INADDR_LOOPBACK != ulAddr) && (0 != ulAddr));
 					SOCKADDR_IN saClientAddress;
 					saClientAddress.sin_family = AF_INET;
 					saClientAddress.sin_addr.s_addr = ulAddr;
 					saClientAddress.sin_port = htons((u_short)DHCP_CLIENT_PORT);
-					VERIFY(SOCKET_ERROR != sendto(sServerSocket, (char *)pdhcpmReply, sizeof(bDHCPMessageBuffer), 0, (SOCKADDR *)&saClientAddress, sizeof(saClientAddress)));
+				 	assert(SOCKET_ERROR != sendto(sServerSocket, (char *)pdhcpmReply, sizeof(bDHCPMessageBuffer), 0, (SOCKADDR *)&saClientAddress, sizeof(saClientAddress)));
 				}
 			}
 			else {
@@ -484,22 +484,22 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char *const pcsS
 			}
 		}
 		else {
-			OUTPUT_WARNING((TEXT("Invalid DHCP message (invalid or missing DHCP message type).")));
+			assert(!(TEXT("Invalid DHCP message (invalid or missing DHCP message type).")));
 		}
 	}
 	else {
-		OUTPUT_WARNING((TEXT("Invalid DHCP message (failed initial checks).")));
+		assert(!(TEXT("Invalid DHCP message (failed initial checks).")));
 	}
 }
 
 bool ReadDHCPClientRequests(const SOCKET sServerSocket, const char *const pcsServerHostName, VectorAddressInUseInformation *const pvAddressesInUse, const DWORD dwServerAddr, const DWORD dwMask, const DWORD dwMinAddr, const DWORD dwMaxAddr) {
-	ASSERT((INVALID_SOCKET != sServerSocket) && (0 != pcsServerHostName) && (0 != pvAddressesInUse) && (0 != dwServerAddr) && (0 != dwMask) && (0 != dwMinAddr) && (0 != dwMaxAddr));
+ 	assert((INVALID_SOCKET != sServerSocket) && (0 != pcsServerHostName) && (0 != pvAddressesInUse) && (0 != dwServerAddr) && (0 != dwMask) && (0 != dwMinAddr) && (0 != dwMaxAddr));
 	bool bSuccess = false;
 	BYTE *const pbReadBuffer = (BYTE *)LocalAlloc(LMEM_FIXED, MAX_UDP_MESSAGE_SIZE);
 	if (0 != pbReadBuffer) {
 		bSuccess = true;
 		int iLastError = 0;
-		ASSERT(WSAENOTSOCK != iLastError);
+	 	assert(WSAENOTSOCK != iLastError);
 		while (WSAENOTSOCK != iLastError) {
 			SOCKADDR_IN saClientAddress;
 			int iClientAddressSize = sizeof(saClientAddress);
@@ -521,7 +521,7 @@ bool ReadDHCPClientRequests(const SOCKET sServerSocket, const char *const pcsSer
 				}
 			}
 		}
-		VERIFY(0 == LocalFree(pbReadBuffer));
+	 	assert(0 == LocalFree(pbReadBuffer));
 	}
 	else {
 		OUTPUT_ERROR((TEXT("Unable to allocate memory for client datagram read buffer.")));

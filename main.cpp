@@ -1,13 +1,12 @@
 #include "DHCPLite.h"
 #include <windows.h>
-#include <stdio.h>
 
 SOCKET sServerSocket = INVALID_SOCKET;  // Global to allow ConsoleCtrlHandlerRoutine access to it
 
 BOOL WINAPI ConsoleCtrlHandlerRoutine(DWORD dwCtrlType) {
 	if ((CTRL_C_EVENT == dwCtrlType) || (CTRL_BREAK_EVENT == dwCtrlType)) {
 		if (INVALID_SOCKET != sServerSocket) {
-			VERIFY(0 == closesocket(sServerSocket));
+			assert(0 == closesocket(sServerSocket));
 			sServerSocket = INVALID_SOCKET;
 		}
 		return TRUE;
@@ -35,7 +34,7 @@ void main(int /*argc*/, char ** /*argv*/) {
 		system("pause");
 		return;
 	}
-	ASSERT((DWValuetoIP(dwMinAddr) <= DWValuetoIP(dwServerAddr)) && (DWValuetoIP(dwServerAddr) <= DWValuetoIP(dwMaxAddr)));
+	assert((DWValuetoIP(dwMinAddr) <= DWValuetoIP(dwServerAddr)) && (DWValuetoIP(dwServerAddr) <= DWValuetoIP(dwMaxAddr)));
 
 	VectorAddressInUseInformation vAddressesInUse;
 	AddressInUseInformation aiuiServerAddress;
@@ -50,13 +49,13 @@ void main(int /*argc*/, char ** /*argv*/) {
 			OUTPUT((TEXT("")));
 			char pcsServerHostName[MAX_HOSTNAME_LENGTH];
 			if (InitializeDHCPServer(&sServerSocket, dwServerAddr, pcsServerHostName, sizeof(pcsServerHostName))) {
-				VERIFY(ReadDHCPClientRequests(sServerSocket, pcsServerHostName, &vAddressesInUse, dwServerAddr, dwMask, dwMinAddr, dwMaxAddr));
+				assert(ReadDHCPClientRequests(sServerSocket, pcsServerHostName, &vAddressesInUse, dwServerAddr, dwMask, dwMinAddr, dwMaxAddr));
 				if (INVALID_SOCKET != sServerSocket) {
-					VERIFY(NO_ERROR == closesocket(sServerSocket));
+					assert(NO_ERROR == closesocket(sServerSocket));
 					sServerSocket = INVALID_SOCKET;
 				}
 			}
-			VERIFY(NO_ERROR == WSACleanup());
+			assert(NO_ERROR == WSACleanup());
 		}
 		else {
 			OUTPUT_ERROR((TEXT("Unable to initialize WinSock.")));
@@ -69,7 +68,7 @@ void main(int /*argc*/, char ** /*argv*/) {
 	for (size_t i = 0; i < vAddressesInUse.size(); i++) {
 		aiuiServerAddress = vAddressesInUse.at(i);
 		if (0 != aiuiServerAddress.pbClientIdentifier) {
-			VERIFY(0 == LocalFree(aiuiServerAddress.pbClientIdentifier));
+			assert(0 == LocalFree(aiuiServerAddress.pbClientIdentifier));
 		}
 	}
 
