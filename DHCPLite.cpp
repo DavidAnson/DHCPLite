@@ -37,59 +37,61 @@ bool GetIPAddressInformation(DWORD *const pdwAddr, DWORD *const pdwMask, DWORD *
 	}
 
 	dwGetIpAddrTableResult = GetIpAddrTable((MIB_IPADDRTABLE *)pbIpAddrTableBuffer, &ulIpAddrTableSize, FALSE);
-	if ((NO_ERROR == dwGetIpAddrTableResult) && (ulIpAddrTableSizeAllocated <= ulIpAddrTableSize)) {
-		const MIB_IPADDRTABLE *const pmiatIpAddrTable = (MIB_IPADDRTABLE *)pbIpAddrTableBuffer;
-		if (true) { //DEBUG
-		//if (2 == pmiatIpAddrTable->dwNumEntries) {
-			const bool loopbackAtIndex0 = DWValuetoIP(0x7f000001) == pmiatIpAddrTable->table[0].dwAddr;
-			const bool loopbackAtIndex1 = DWValuetoIP(0x7f000001) == pmiatIpAddrTable->table[1].dwAddr;
-			if (true) { //DEBUG
-			//if (loopbackAtIndex0 ^ loopbackAtIndex1) {
-				const int tableIndex = loopbackAtIndex1 ? 0 : 1;
-				std::cout << "IP Address being used:\n";
-				const DWORD dwAddr = pmiatIpAddrTable->table[tableIndex].dwAddr;
-				if (0 != dwAddr) {
-					const DWORD dwMask = pmiatIpAddrTable->table[tableIndex].dwMask;
-					const DWORD dwAddrValue = DWIPtoValue(dwAddr);
-					const DWORD dwMaskValue = DWIPtoValue(dwMask);
-					const DWORD dwMinAddrValue = ((dwAddrValue & dwMaskValue) | 2);  // Skip x.x.x.1 (default router address)
-					const DWORD dwMaxAddrValue = ((dwAddrValue & dwMaskValue) | (~(dwMaskValue | 1)));
-					const DWORD dwMinAddr = DWValuetoIP(dwMinAddrValue);
-					const DWORD dwMaxAddr = DWValuetoIP(dwMaxAddrValue);
-					
-					printf("%d.%d.%d.%d - Subnet:%d.%d.%d.%d - Range:[%d.%d.%d.%d-%d.%d.%d.%d]\n",
-						DWIP0(dwAddr), DWIP1(dwAddr), DWIP2(dwAddr), DWIP3(dwAddr),
-						DWIP0(dwMask), DWIP1(dwMask), DWIP2(dwMask), DWIP3(dwMask),
-						DWIP0(dwMinAddr), DWIP1(dwMinAddr), DWIP2(dwMinAddr), DWIP3(dwMinAddr),
-						DWIP0(dwMaxAddr), DWIP1(dwMaxAddr), DWIP2(dwMaxAddr), DWIP3(dwMaxAddr));
+	if ((NO_ERROR != dwGetIpAddrTableResult) || (ulIpAddrTableSizeAllocated > ulIpAddrTableSize)) {
+		throw GetIPInfoException("Unable to query IP address table.");
+		LocalFree(pbIpAddrTableBuffer);
+		return false;
+	}
 
-					if (dwMinAddrValue <= dwMaxAddrValue) {
-						*pdwAddr = dwAddr;
-						*pdwMask = dwMask;
-						*pdwMinAddr = dwMinAddr;
-						*pdwMaxAddr = dwMaxAddr;
+	const MIB_IPADDRTABLE *const pmiatIpAddrTable = (MIB_IPADDRTABLE *)pbIpAddrTableBuffer;
+	if (2 != pmiatIpAddrTable->dwNumEntries) {
+		throw GetIPInfoException("Too many or too few IP addresses are present on this machine. [Routing can not be bypassed.]");
+		LocalFree(pbIpAddrTableBuffer);
+		return false;
+	}
 
-						LocalFree(pbIpAddrTableBuffer);
-						return true;
-					}
-					else {
-						throw GetIPInfoException("Not enough IP addresses available in the current subnet.");
-					}
-				}
-				else {
-					throw GetIPInfoException("IP Address is 0.0.0.0 - no network is available on this machine. [APIPA (Auto-IP) may not have assigned an IP address yet.]");
-				}
-			}
-			else {
-				throw GetIPInfoException("Unsupported IP address configuration. [Expected to find loopback address and one other.]");
-			}
-		}
-		else {
-			throw GetIPInfoException("Too many or too few IP addresses are present on this machine. [Routing can not be bypassed.]");
-		}
+	const bool loopbackAtIndex0 = DWValuetoIP(0x7f000001) == pmiatIpAddrTable->table[0].dwAddr;
+	const bool loopbackAtIndex1 = DWValuetoIP(0x7f000001) == pmiatIpAddrTable->table[1].dwAddr;
+	if (loopbackAtIndex0 == loopbackAtIndex1) {
+		throw GetIPInfoException("Unsupported IP address configuration. [Expected to find loopback address and one other.]");
+		LocalFree(pbIpAddrTableBuffer);
+		return false;
+	}
+
+	const int tableIndex = loopbackAtIndex1 ? 0 : 1;
+	std::cout << "IP Address being used:\n";
+	const DWORD dwAddr = pmiatIpAddrTable->table[tableIndex].dwAddr;
+	if (0 == dwAddr) {
+		throw GetIPInfoException("IP Address is 0.0.0.0 - no network is available on this machine. [APIPA (Auto-IP) may not have assigned an IP address yet.]");
+		LocalFree(pbIpAddrTableBuffer);
+		return false;
+	}
+
+	const DWORD dwMask = pmiatIpAddrTable->table[tableIndex].dwMask;
+	const DWORD dwAddrValue = DWIPtoValue(dwAddr);
+	const DWORD dwMaskValue = DWIPtoValue(dwMask);
+	const DWORD dwMinAddrValue = ((dwAddrValue & dwMaskValue) | 2);  // Skip x.x.x.1 (default router address)
+	const DWORD dwMaxAddrValue = ((dwAddrValue & dwMaskValue) | (~(dwMaskValue | 1)));
+	const DWORD dwMinAddr = DWValuetoIP(dwMinAddrValue);
+	const DWORD dwMaxAddr = DWValuetoIP(dwMaxAddrValue);
+
+	printf("%d.%d.%d.%d - Subnet:%d.%d.%d.%d - Range:[%d.%d.%d.%d-%d.%d.%d.%d]\n",
+		DWIP0(dwAddr), DWIP1(dwAddr), DWIP2(dwAddr), DWIP3(dwAddr),
+		DWIP0(dwMask), DWIP1(dwMask), DWIP2(dwMask), DWIP3(dwMask),
+		DWIP0(dwMinAddr), DWIP1(dwMinAddr), DWIP2(dwMinAddr), DWIP3(dwMinAddr),
+		DWIP0(dwMaxAddr), DWIP1(dwMaxAddr), DWIP2(dwMaxAddr), DWIP3(dwMaxAddr));
+
+	if (dwMinAddrValue <= dwMaxAddrValue) {
+		*pdwAddr = dwAddr;
+		*pdwMask = dwMask;
+		*pdwMinAddr = dwMinAddr;
+		*pdwMaxAddr = dwMaxAddr;
+
+		LocalFree(pbIpAddrTableBuffer);
+		return true;
 	}
 	else {
-		throw GetIPInfoException("Unable to query IP address table.");
+		throw GetIPInfoException("Not enough IP addresses available in the current subnet.");
 	}
 
 	LocalFree(pbIpAddrTableBuffer);
@@ -98,84 +100,89 @@ bool GetIPAddressInformation(DWORD *const pdwAddr, DWORD *const pdwMask, DWORD *
 
 bool InitializeDHCPServer(SOCKET *const psServerSocket, const DWORD dwServerAddr, char *const pcsServerHostName, const size_t stServerHostNameLength) {
  	assert((0 != psServerSocket) && (0 != dwServerAddr) && (0 != pcsServerHostName) && (1 <= stServerHostNameLength));
-	bool bSuccess = false;
+
 	// Determine server hostname
-	if (0 != gethostname(pcsServerHostName, (int)stServerHostNameLength)) {
+	if (NO_ERROR != gethostname(pcsServerHostName, (int)stServerHostNameLength)) {
 		pcsServerHostName[0] = '\0';
 	}
+
 	// Open socket and set broadcast option on it
 	*psServerSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
-	if (INVALID_SOCKET != *psServerSocket) {
-		SOCKADDR_IN saServerAddress;
-		saServerAddress.sin_family = AF_INET;
-		saServerAddress.sin_addr.s_addr = dwServerAddr;  // Already in network byte order
-		saServerAddress.sin_port = htons((u_short)DHCP_SERVER_PORT);
-		const int iServerAddressSize = sizeof(saServerAddress);
-		if (SOCKET_ERROR != bind(*psServerSocket, (SOCKADDR *)(&saServerAddress), iServerAddressSize)) {
-			int iBroadcastOption = TRUE;
-			if (0 == setsockopt(*psServerSocket, SOL_SOCKET, SO_BROADCAST, (char *)(&iBroadcastOption), sizeof(iBroadcastOption))) {
-				bSuccess = true;
-			}
-			else {
-				throw SocketException("Unable to set socket options.");
-			}
-		}
-		else {
-			throw SocketException("Unable to bind to server socket (port 67).");
-		}
+	if (INVALID_SOCKET == *psServerSocket) {
+		throw SocketException("Unable to open server socket (port 67).");
+		return false;
+	}
+
+	SOCKADDR_IN saServerAddress{};
+	saServerAddress.sin_family = AF_INET;
+	saServerAddress.sin_addr.s_addr = dwServerAddr;  // Already in network byte order
+	saServerAddress.sin_port = htons((u_short)DHCP_SERVER_PORT);
+	const int iServerAddressSize = sizeof(saServerAddress);
+	if (SOCKET_ERROR == bind(*psServerSocket, (SOCKADDR *)(&saServerAddress), iServerAddressSize)) {
+		throw SocketException("Unable to bind to server socket (port 67).");
+		return false;
+	}
+
+	int iBroadcastOption = TRUE;
+	if (NO_ERROR == setsockopt(*psServerSocket, SOL_SOCKET, SO_BROADCAST, (char *)(&iBroadcastOption), sizeof(iBroadcastOption))) {
+		return true;
 	}
 	else {
-		throw SocketException("Unable to open server socket (port 67).");
+		throw SocketException("Unable to set socket options.");
 	}
-	return bSuccess;
+
+	return false;
 }
 
 bool FindOptionData(const BYTE bOption, const BYTE *const pbOptions, const int iOptionsSize, const BYTE **const ppbOptionData, unsigned int *const piOptionDataSize) {
- 	assert(((0 == iOptionsSize) || (0 != pbOptions)) && (0 != ppbOptionData) && (0 != piOptionDataSize) &&
-		(option_PAD != bOption) && (option_END != bOption));
-	bool bSuccess = false;
-	// RFC 2132
-	bool bHitEND = false;
+ 	assert(((0 == iOptionsSize) || (0 != pbOptions)) && (0 != ppbOptionData) && (0 != piOptionDataSize)
+		&& (option_PAD != bOption) && (option_END != bOption));
+	
+	bool bHitEND = false; // RFC 2132
 	const BYTE *pbCurrentOption = pbOptions;
-	while (((pbCurrentOption - pbOptions) < iOptionsSize) && !bHitEND && !bSuccess) {
+	while (((pbCurrentOption - pbOptions) < iOptionsSize) && !bHitEND) {
 		const BYTE bCurrentOption = *pbCurrentOption;
-		if (option_PAD == bCurrentOption) {
+
+		switch (bCurrentOption) {
+		case option_PAD:
 			pbCurrentOption++;
-		}
-		else if (option_END == bCurrentOption) {
+			break;
+		case option_END:
 			bHitEND = true;
-		}
-		else {
+			break;
+		default:
+		{
 			pbCurrentOption++;
-			if ((pbCurrentOption - pbOptions) < iOptionsSize) {
-				const BYTE bCurrentOptionLen = *pbCurrentOption;
-				pbCurrentOption++;
-				if (bOption == bCurrentOption) {
-					*ppbOptionData = pbCurrentOption;
-					*piOptionDataSize = bCurrentOptionLen;
-					bSuccess = true;
-				}
-				pbCurrentOption += bCurrentOptionLen;
-			}
-			else {
+			if ((pbCurrentOption - pbOptions) >= iOptionsSize) {
 				assert(!(TEXT("Invalid option data (not enough room for required length byte).")));
+				break;
 			}
+			const BYTE bCurrentOptionLen = *pbCurrentOption;
+			pbCurrentOption++;
+			if (bOption == bCurrentOption) {
+				*ppbOptionData = pbCurrentOption;
+				*piOptionDataSize = bCurrentOptionLen;
+				return true;
+			}
+			pbCurrentOption += bCurrentOptionLen;
+			break;
+		}
 		}
 	}
-	return bSuccess;
+	return false;
 }
 
 bool GetDHCPMessageType(const BYTE *const pbOptions, const int iOptionsSize, DHCPMessageTypes *const pdhcpmtMessageType) {
  	assert(((0 == iOptionsSize) || (0 != pbOptions)) && (0 != pdhcpmtMessageType));
-	bool bSuccess = false;
+
 	const BYTE *pbDHCPMessageTypeData;
 	unsigned int iDHCPMessageTypeDataSize;
-	if (FindOptionData(option_DHCPMESSAGETYPE, pbOptions, iOptionsSize, &pbDHCPMessageTypeData, &iDHCPMessageTypeDataSize) &&
-		(1 == iDHCPMessageTypeDataSize) && (1 <= *pbDHCPMessageTypeData) && (*pbDHCPMessageTypeData <= 8)) {
+	if (FindOptionData(option_DHCPMESSAGETYPE, pbOptions, iOptionsSize, &pbDHCPMessageTypeData, &iDHCPMessageTypeDataSize)
+		&& (1 == iDHCPMessageTypeDataSize) && (1 <= *pbDHCPMessageTypeData) && (*pbDHCPMessageTypeData <= 8)) {
 		*pdhcpmtMessageType = (DHCPMessageTypes)(*pbDHCPMessageTypeData);
-		bSuccess = true;
+		return true;
 	}
-	return bSuccess;
+	return false;
 }
 
 bool AddressInUseInformationAddrValueFilter(const AddressInUseInformation &raiui, const void *const pvFilterData) {
@@ -186,14 +193,16 @@ bool AddressInUseInformationAddrValueFilter(const AddressInUseInformation &raiui
 bool AddressInUseInformationClientIdentifierFilter(const AddressInUseInformation &raiui, const void *const pvFilterData) {
 	const ClientIdentifierData *const pcid = (ClientIdentifierData *)pvFilterData;
  	assert(0 != pcid);
-	return ((0 != raiui.dwClientIdentifierSize) && (pcid->dwClientIdentifierSize == raiui.dwClientIdentifierSize) && (0 == memcmp(pcid->pbClientIdentifier, raiui.pbClientIdentifier, pcid->dwClientIdentifierSize)));
+
+	return (0 != raiui.dwClientIdentifierSize) && (pcid->dwClientIdentifierSize == raiui.dwClientIdentifierSize)
+		&& (0 == memcmp(pcid->pbClientIdentifier, raiui.pbClientIdentifier, pcid->dwClientIdentifierSize));
 }
 
 void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char *const pcsServerHostName, const BYTE *const pbData, const int iDataSize, VectorAddressInUseInformation *const pvAddressesInUse, const DWORD dwServerAddr, const DWORD dwMask, const DWORD dwMinAddr, const DWORD dwMaxAddr) {
-	// DHCP magic cookie values
-	const BYTE pbDHCPMagicCookie[] = { 99, 130, 83, 99 };
-
  	assert((INVALID_SOCKET != sServerSocket) && (0 != pcsServerHostName) && ((0 == iDataSize) || (0 != pbData)) && (0 != pvAddressesInUse) && (0 != dwServerAddr) && (0 != dwMask) && (0 != dwMinAddr) && (0 != dwMaxAddr));
+
+	const BYTE pbDHCPMagicCookie[] = { 99, 130, 83, 99 }; // DHCP magic cookie values
+
 	const DHCPMessage *const pdhcpmRequest = (DHCPMessage *)pbData;
 	if ((((sizeof(*pdhcpmRequest) + sizeof(pbDHCPMagicCookie)) <= iDataSize) &&  // Take into account mandatory DHCP magic cookie values in options array (RFC 2131 section 3)
 		(op_BOOTREQUEST == pdhcpmRequest->op) &&
@@ -498,37 +507,38 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char *const pcsS
 
 bool ReadDHCPClientRequests(const SOCKET sServerSocket, const char *const pcsServerHostName, VectorAddressInUseInformation *const pvAddressesInUse, const DWORD dwServerAddr, const DWORD dwMask, const DWORD dwMinAddr, const DWORD dwMaxAddr) {
  	assert((INVALID_SOCKET != sServerSocket) && (0 != pcsServerHostName) && (0 != pvAddressesInUse) && (0 != dwServerAddr) && (0 != dwMask) && (0 != dwMinAddr) && (0 != dwMaxAddr));
-	bool bSuccess = false;
+
 	BYTE *const pbReadBuffer = (BYTE *)LocalAlloc(LMEM_FIXED, MAX_UDP_MESSAGE_SIZE);
-	if (0 != pbReadBuffer) {
-		bSuccess = true;
-		int iLastError = 0;
-	 	assert(WSAENOTSOCK != iLastError);
-		while (WSAENOTSOCK != iLastError) {
-			SOCKADDR_IN saClientAddress;
-			int iClientAddressSize = sizeof(saClientAddress);
-			const int iBytesReceived = recvfrom(sServerSocket, (char *)pbReadBuffer, MAX_UDP_MESSAGE_SIZE, 0, (SOCKADDR *)(&saClientAddress), &iClientAddressSize);
-			if (SOCKET_ERROR != iBytesReceived) {
-				// ASSERT(DHCP_CLIENT_PORT == ntohs(saClientAddress.sin_port));  // Not always the case
-				ProcessDHCPClientRequest(sServerSocket, pcsServerHostName, pbReadBuffer, iBytesReceived, pvAddressesInUse, dwServerAddr, dwMask, dwMinAddr, dwMaxAddr);
-			}
-			else {
-				iLastError = WSAGetLastError();
-				if (WSAENOTSOCK == iLastError) {
-					throw SocketException("Stopping server request handler.");
-				}
-				else if (WSAEINTR == iLastError) {
-					throw SocketException("Socket operation was cancelled.");
-				}
-				else {
-					throw SocketException("Call to recvfrom returned error.");
-				}
+	if (0 == pbReadBuffer) {
+		throw RequestException("Unable to allocate memory for client datagram read buffer.");
+		return false;
+	}
+
+	int iLastError = 0;
+	assert(WSAENOTSOCK != iLastError);
+
+	while (WSAENOTSOCK != iLastError) {
+		SOCKADDR_IN saClientAddress;
+		int iClientAddressSize = sizeof(saClientAddress);
+		const int iBytesReceived = recvfrom(sServerSocket, (char *)pbReadBuffer, MAX_UDP_MESSAGE_SIZE, 0, (SOCKADDR *)(&saClientAddress), &iClientAddressSize);
+		if (SOCKET_ERROR != iBytesReceived) {
+			// assert(DHCP_CLIENT_PORT == ntohs(saClientAddress.sin_port));  // Not always the case
+			ProcessDHCPClientRequest(sServerSocket, pcsServerHostName, pbReadBuffer, iBytesReceived, pvAddressesInUse, dwServerAddr, dwMask, dwMinAddr, dwMaxAddr);
+		}
+		else {
+			switch (WSAGetLastError()) {
+			case WSAENOTSOCK:
+				throw SocketException("Stopping server request handler.");
+				break;
+			case WSAEINTR:
+				throw SocketException("Socket operation was cancelled.");
+				break;
+			default:
+				throw SocketException("Call to recvfrom returned error.");
+				break;
 			}
 		}
-	 	LocalFree(pbReadBuffer);
 	}
-	else {
-		throw RequestException("Unable to allocate memory for client datagram read buffer.");
-	}
-	return bSuccess;
+	LocalFree(pbReadBuffer);
+	return true;
 }
