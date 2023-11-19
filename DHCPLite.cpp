@@ -811,5 +811,6 @@ int main(int /*argc*/, char** /*argv*/)
 	{
 		OUTPUT_ERROR((TEXT("Unable to set Ctrl-C handler.")));
 	}
+	system("pause");
 	return 0;
 }
