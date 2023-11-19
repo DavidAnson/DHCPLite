@@ -15,10 +15,6 @@
 #endif  // defined(DEBUG) || defined(_DEBUG)
 #endif  // !defined(VERIFY)
 
-// Macro to simplify determining the number of elements in an array (do *not*
-// use this macro for pointers)
-#define ARRAY_LENGTH(x) (sizeof(x)/sizeof((x)[0]))
-
 const TCHAR ptsCRLF[] = "\r\n";
 const TCHAR ptsERRORPrefix[] = "ERROR %d: ";
 #define OUTPUT(x) printf x; printf(ptsCRLF)
@@ -69,6 +65,42 @@ enum DHCPMessageTypes {
 	DHCPMessageType_RELEASE = 7,
 	DHCPMessageType_INFORM = 8,
 };
+struct ClientIdentifierData {
+	const BYTE *pbClientIdentifier;
+	DWORD dwClientIdentifierSize;
+};
+
+// RFC 2131 section 2
+#pragma warning(push)
+#pragma warning(disable : 4200)
+#pragma pack(push, 1)
+struct DHCPMessage {
+	BYTE op;
+	BYTE htype;
+	BYTE hlen;
+	BYTE hops;
+	DWORD xid;
+	WORD secs;
+	WORD flags;
+	DWORD ciaddr;
+	DWORD yiaddr;
+	DWORD siaddr;
+	DWORD giaddr;
+	BYTE chaddr[16];
+	BYTE sname[64];
+	BYTE file[128];
+	BYTE options[];
+};
+struct DHCPServerOptions {
+	BYTE pbMagicCookie[4];
+	BYTE pbMessageType[3];
+	BYTE pbLeaseTime[6];
+	BYTE pbSubnetMask[6];
+	BYTE pbServerID[6];
+	BYTE bEND;
+};
+#pragma pack(pop)
+#pragma warning(pop)
 
 struct AddressInUseInformation {
 	DWORD dwAddrValue;

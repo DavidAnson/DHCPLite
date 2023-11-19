@@ -2,9 +2,6 @@
 #include <iphlpapi.h>
 #include <iprtrmib.h>
 
-// DHCP magic cookie values
-const BYTE pbDHCPMagicCookie[] = { 99, 130, 83, 99 };
-
 typedef bool(*FindIndexOfFilter)(const AddressInUseInformation& raiui, const void* const pvFilterData);
 int FindIndexOf(const VectorAddressInUseInformation* const pvAddressesInUse, const FindIndexOfFilter pFilter, const void* const pvFilterData)
 {
@@ -29,40 +26,6 @@ bool PushBack(VectorAddressInUseInformation *const pvAddressesInUse, const Addre
 	}
 	return true;
 }
-
-// RFC 2131 section 2
-#pragma warning(push)
-#pragma warning(disable : 4200)
-#pragma pack(push, 1)
-struct DHCPMessage
-{
-	BYTE op;
-	BYTE htype;
-	BYTE hlen;
-	BYTE hops;
-	DWORD xid;
-	WORD secs;
-	WORD flags;
-	DWORD ciaddr;
-	DWORD yiaddr;
-	DWORD siaddr;
-	DWORD giaddr;
-	BYTE chaddr[16];
-	BYTE sname[64];
-	BYTE file[128];
-	BYTE options[];
-};
-struct DHCPServerOptions
-{
-	BYTE pbMagicCookie[4];
-	BYTE pbMessageType[3];
-	BYTE pbLeaseTime[6];
-	BYTE pbSubnetMask[6];
-	BYTE pbServerID[6];
-	BYTE bEND;
-};
-#pragma pack(pop)
-#pragma warning(pop)
 
 bool GetIPAddressInformation(DWORD* const pdwAddr, DWORD* const pdwMask, DWORD* const pdwMinAddr, DWORD* const pdwMaxAddr)
 {
@@ -259,11 +222,6 @@ bool AddressInUseInformationAddrValueFilter(const AddressInUseInformation& raiui
 	return (*pdwAddrValue == raiui.dwAddrValue);
 }
 
-struct ClientIdentifierData
-{
-	const BYTE* pbClientIdentifier;
-	DWORD dwClientIdentifierSize;
-};
 bool AddressInUseInformationClientIdentifierFilter(const AddressInUseInformation& raiui, const void* const pvFilterData)
 {
 	const ClientIdentifierData* const pcid = (ClientIdentifierData*)pvFilterData;
@@ -273,6 +231,9 @@ bool AddressInUseInformationClientIdentifierFilter(const AddressInUseInformation
 
 void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char* const pcsServerHostName, const BYTE* const pbData, const int iDataSize, VectorAddressInUseInformation* const pvAddressesInUse, const DWORD dwServerAddr, const DWORD dwMask, const DWORD dwMinAddr, const DWORD dwMaxAddr)
 {
+	// DHCP magic cookie values
+	const BYTE pbDHCPMagicCookie[] = { 99, 130, 83, 99 };
+
 	ASSERT((INVALID_SOCKET != sServerSocket) && (0 != pcsServerHostName) && ((0 == iDataSize) || (0 != pbData)) && (0 != pvAddressesInUse) && (0 != dwServerAddr) && (0 != dwMask) && (0 != dwMinAddr) && (0 != dwMaxAddr));
 	const DHCPMessage* const pdhcpmRequest = (DHCPMessage*)pbData;
 	if ((((sizeof(*pdhcpmRequest) + sizeof(pbDHCPMagicCookie)) <= iDataSize) &&  // Take into account mandatory DHCP magic cookie values in options array (RFC 2131 section 3)
@@ -293,7 +254,7 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char* const pcsS
 			unsigned int iRequestHostNameDataSize;
 			if (FindOptionData(option_HOSTNAME, pbOptions, iOptionsSize, &pbRequestHostNameData, &iRequestHostNameDataSize))
 			{
-				const size_t stHostNameCopySize = min(iRequestHostNameDataSize + 1, ARRAY_LENGTH(pcsClientHostName));
+				const size_t stHostNameCopySize = min(iRequestHostNameDataSize + 1, sizeof(pcsClientHostName));
 				_tcsncpy_s(pcsClientHostName, stHostNameCopySize, (char*)pbRequestHostNameData, _TRUNCATE);
 			}
 			if (('\0' == pcsServerHostName[0]) || (0 != _stricmp(pcsClientHostName, pcsServerHostName)))

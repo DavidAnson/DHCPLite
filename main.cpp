@@ -41,7 +41,7 @@ int main(int /*argc*/, char ** /*argv*/) {
 					OUTPUT((TEXT("Server is running...  (Press Ctrl+C to shutdown.)")));
 					OUTPUT((TEXT("")));
 					char pcsServerHostName[MAX_HOSTNAME_LENGTH];
-					if (InitializeDHCPServer(&sServerSocket, dwServerAddr, pcsServerHostName, ARRAY_LENGTH(pcsServerHostName))) {
+					if (InitializeDHCPServer(&sServerSocket, dwServerAddr, pcsServerHostName, sizeof(pcsServerHostName))) {
 						VERIFY(ReadDHCPClientRequests(sServerSocket, pcsServerHostName, &vAddressesInUse, dwServerAddr, dwMask, dwMinAddr, dwMaxAddr));
 						if (INVALID_SOCKET != sServerSocket) {
 							VERIFY(0 == closesocket(sServerSocket));
