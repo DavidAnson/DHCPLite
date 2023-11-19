@@ -44,27 +44,24 @@ void main(int /*argc*/, char ** /*argv*/) {
 	aiuiServerAddress.dwAddrValue = DWIPtoValue(dwServerAddr);
 	aiuiServerAddress.pbClientIdentifier = 0;  // Server entry is only entry without a client ID
 	aiuiServerAddress.dwClientIdentifierSize = 0;
-	if (PushBack(&vAddressesInUse, &aiuiServerAddress)) {
-		WSADATA wsaData;
-		if (NO_ERROR == WSAStartup(MAKEWORD(1, 1), &wsaData)) {
-			std::cout << "Server is running...  (Press Ctrl+C to shutdown.)\n";
+	vAddressesInUse.push_back(aiuiServerAddress);
+	
+	WSADATA wsaData;
+	if (NO_ERROR == WSAStartup(MAKEWORD(1, 1), &wsaData)) {
+		std::cout << "Server is running...  (Press Ctrl+C to shutdown.)\n";
 
-			char pcsServerHostName[MAX_HOSTNAME_LENGTH];
-			if (InitializeDHCPServer(&sServerSocket, dwServerAddr, pcsServerHostName, sizeof(pcsServerHostName))) {
-				assert(ReadDHCPClientRequests(sServerSocket, pcsServerHostName, &vAddressesInUse, dwServerAddr, dwMask, dwMinAddr, dwMaxAddr));
-				if (INVALID_SOCKET != sServerSocket) {
-					assert(NO_ERROR == closesocket(sServerSocket));
-					sServerSocket = INVALID_SOCKET;
-				}
+		char pcsServerHostName[MAX_HOSTNAME_LENGTH];
+		if (InitializeDHCPServer(&sServerSocket, dwServerAddr, pcsServerHostName, sizeof(pcsServerHostName))) {
+			assert(ReadDHCPClientRequests(sServerSocket, pcsServerHostName, &vAddressesInUse, dwServerAddr, dwMask, dwMinAddr, dwMaxAddr));
+			if (INVALID_SOCKET != sServerSocket) {
+				assert(NO_ERROR == closesocket(sServerSocket));
+				sServerSocket = INVALID_SOCKET;
 			}
-			assert(NO_ERROR == WSACleanup());
 		}
-		else {
-			std::cout << "[Error] Unable to initialize WinSock.\n";
-		}
+		assert(NO_ERROR == WSACleanup());
 	}
 	else {
-		std::cout << "[Error] Insufficient memory to add server address.\n";
+		std::cout << "[Error] Unable to initialize WinSock.\n";
 	}
 
 	for (size_t i = 0; i < vAddressesInUse.size(); i++) {

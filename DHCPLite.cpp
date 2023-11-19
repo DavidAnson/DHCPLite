@@ -15,19 +15,7 @@ int FindIndexOf(const VectorAddressInUseInformation *const pvAddressesInUse, con
 	return -1;
 }
 
-bool PushBack(VectorAddressInUseInformation *const pvAddressesInUse, const AddressInUseInformation *const paiui) {
- 	assert((0 != pvAddressesInUse) && (0 != paiui));
-
-	try {
-		pvAddressesInUse->push_back(*paiui);
-	}
-	catch (const std::bad_alloc) {
-		return false;
-	}
-	return true;
-}
-
-void GetIPAddressInformation(DWORD *const pdwAddr, DWORD *const pdwMask, DWORD *const pdwMinAddr, DWORD *const pdwMaxAddr) {
+bool GetIPAddressInformation(DWORD *const pdwAddr, DWORD *const pdwMask, DWORD *const pdwMinAddr, DWORD *const pdwMaxAddr) {
  	assert((0 != pdwAddr) && (0 != pdwMask) && (0 != pdwMinAddr) && (0 != pdwMaxAddr));
 
 	bool bSuccess = false;
@@ -37,7 +25,7 @@ void GetIPAddressInformation(DWORD *const pdwAddr, DWORD *const pdwMask, DWORD *
 	// Technically, if NO_ERROR was returned, we don't need to allocate a buffer - but it's easier to do so anyway - and because we need more data than fits in the default buffer, this would only be wasteful in the error case
 	if ((NO_ERROR != dwGetIpAddrTableResult) && (ERROR_INSUFFICIENT_BUFFER != dwGetIpAddrTableResult)) {
 		throw GetIPInfoException("Unable to query IP address table.");
-		return;
+		return false;
 	}
 
 	const ULONG ulIpAddrTableSizeAllocated = ulIpAddrTableSize;
@@ -45,7 +33,7 @@ void GetIPAddressInformation(DWORD *const pdwAddr, DWORD *const pdwMask, DWORD *
 	if (0 == pbIpAddrTableBuffer) {
 		throw GetIPInfoException("Insufficient memory for IP address table.");
 		LocalFree(pbIpAddrTableBuffer);
-		return;
+		return false;
 	}
 
 	dwGetIpAddrTableResult = GetIpAddrTable((MIB_IPADDRTABLE *)pbIpAddrTableBuffer, &ulIpAddrTableSize, FALSE);
@@ -80,6 +68,9 @@ void GetIPAddressInformation(DWORD *const pdwAddr, DWORD *const pdwMask, DWORD *
 						*pdwMask = dwMask;
 						*pdwMinAddr = dwMinAddr;
 						*pdwMaxAddr = dwMaxAddr;
+
+						LocalFree(pbIpAddrTableBuffer);
+						return true;
 					}
 					else {
 						throw GetIPInfoException("Not enough IP addresses available in the current subnet.");
@@ -100,7 +91,9 @@ void GetIPAddressInformation(DWORD *const pdwAddr, DWORD *const pdwMask, DWORD *
 	else {
 		throw GetIPInfoException("Unable to query IP address table.");
 	}
+
 	LocalFree(pbIpAddrTableBuffer);
+	return false;
 }
 
 bool InitializeDHCPServer(SOCKET *const psServerSocket, const DWORD dwServerAddr, char *const pcsServerHostName, const size_t stServerHostNameLength) {
@@ -322,7 +315,8 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char *const pcsS
 						if (0 != aiuiClientAddress.pbClientIdentifier) {
 							CopyMemory(aiuiClientAddress.pbClientIdentifier, pbRequestClientIdentifierData, iRequestClientIdentifierDataSize);
 							aiuiClientAddress.dwClientIdentifierSize = iRequestClientIdentifierDataSize;
-							if (bSeenClientBefore || PushBack(pvAddressesInUse, &aiuiClientAddress)) {
+							if (bSeenClientBefore) {
+								pvAddressesInUse->push_back(aiuiClientAddress);
 								pdhcpmReply->yiaddr = dwOfferAddr;
 								pdhcpsoServerOptions->pbMessageType[2] = DHCPMessageType_OFFER;
 								bSendDHCPMessage = true;
