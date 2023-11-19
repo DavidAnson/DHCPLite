@@ -71,21 +71,21 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <OutDir>$(SolutionDir)out</OutDir>
+    <OutDir>$(SolutionDir)out\</OutDir>
     <IntDir>temp\$(Platform)\$(Configuration)\</IntDir>
     <TargetName>$(ProjectName)_64_d</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <OutDir>$(SolutionDir)out</OutDir>
+    <OutDir>$(SolutionDir)out\</OutDir>
     <IntDir>temp\$(Platform)\$(Configuration)\</IntDir>
     <TargetName>$(ProjectName)_d</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <OutDir>$(SolutionDir)out</OutDir>
+    <OutDir>$(SolutionDir)out\</OutDir>
     <IntDir>temp\$(Platform)\$(Configuration)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <OutDir>$(SolutionDir)out</OutDir>
+    <OutDir>$(SolutionDir)out\</OutDir>
     <IntDir>temp\$(Platform)\$(Configuration)\</IntDir>
     <TargetName>$(ProjectName)_64</TargetName>
   </PropertyGroup>
