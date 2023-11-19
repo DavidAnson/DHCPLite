@@ -155,7 +155,6 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="DHCPLite.h" />
-    <ClInclude Include="ToolBox.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="DHCPLite.cpp" />

@@ -1,5 +1,4 @@
 #include "DHCPLite.h"
-#include <windows.h>
 #include <iphlpapi.h>
 #include <iprtrmib.h>
 

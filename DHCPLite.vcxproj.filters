@@ -15,9 +15,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="ToolBox.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="DHCPLite.h">
       <Filter>Header Files</Filter>
     </ClInclude>
