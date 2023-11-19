@@ -4,9 +4,25 @@
 #include <assert.h>
 #include <windows.h>
 
-const TCHAR ptsCRLF[] = "\r\n";
-#define OUTPUT(x) printf x; printf(ptsCRLF)
-#define OUTPUT_ERROR(x) printf("ERROR %d: ", __LINE__); printf x; printf(ptsCRLF);
+class DHCPException : public std::exception {
+public:
+	DHCPException(const char *Message) : exception(Message, 1) {}
+};
+
+class GetIPInfoException : public DHCPException {
+public:
+	GetIPInfoException(const char *Message) : DHCPException(Message) {}
+};
+
+class SocketException : public DHCPException {
+public:
+	SocketException(const char *Message) : DHCPException(Message) {}
+};
+
+class RequestException : public DHCPException {
+public:
+	RequestException(const char *Message) : DHCPException(Message) {}
+};
 
 #define DWIP0(dw) (((dw)>> 0) & 0xff)
 #define DWIP1(dw) (((dw)>> 8) & 0xff)
@@ -98,7 +114,7 @@ struct AddressInUseInformation {
 };
 typedef std::vector<AddressInUseInformation> VectorAddressInUseInformation;
 
-bool GetIPAddressInformation(DWORD *const pdwAddr, DWORD *const pdwMask, DWORD *const pdwMinAddr, DWORD *const pdwMaxAddr);
+void GetIPAddressInformation(DWORD *const pdwAddr, DWORD *const pdwMask, DWORD *const pdwMinAddr, DWORD *const pdwMaxAddr);
 
 bool InitializeDHCPServer(SOCKET *const psServerSocket, const DWORD dwServerAddr, char *const pcsServerHostName, const size_t stServerHostNameLength);
 

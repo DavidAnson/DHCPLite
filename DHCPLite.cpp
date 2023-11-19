@@ -1,10 +1,12 @@
 #include "DHCPLite.h"
+#include <iostream>
 #include <iphlpapi.h>
 #include <iprtrmib.h>
 
 typedef bool(*FindIndexOfFilter)(const AddressInUseInformation &raiui, const void *const pvFilterData);
 int FindIndexOf(const VectorAddressInUseInformation *const pvAddressesInUse, const FindIndexOfFilter pFilter, const void *const pvFilterData) {
  	assert((0 != pvAddressesInUse) && (0 != pFilter) && (0 != pvFilterData));
+
 	for (size_t i = 0; i < pvAddressesInUse->size(); i++) {
 		if (pFilter(pvAddressesInUse->at(i), pvFilterData)) {
 			return (int)i;
@@ -15,6 +17,7 @@ int FindIndexOf(const VectorAddressInUseInformation *const pvAddressesInUse, con
 
 bool PushBack(VectorAddressInUseInformation *const pvAddressesInUse, const AddressInUseInformation *const paiui) {
  	assert((0 != pvAddressesInUse) && (0 != paiui));
+
 	try {
 		pvAddressesInUse->push_back(*paiui);
 	}
@@ -24,79 +27,80 @@ bool PushBack(VectorAddressInUseInformation *const pvAddressesInUse, const Addre
 	return true;
 }
 
-bool GetIPAddressInformation(DWORD *const pdwAddr, DWORD *const pdwMask, DWORD *const pdwMinAddr, DWORD *const pdwMaxAddr) {
+void GetIPAddressInformation(DWORD *const pdwAddr, DWORD *const pdwMask, DWORD *const pdwMinAddr, DWORD *const pdwMaxAddr) {
  	assert((0 != pdwAddr) && (0 != pdwMask) && (0 != pdwMinAddr) && (0 != pdwMaxAddr));
+
 	bool bSuccess = false;
 	MIB_IPADDRTABLE miatIpAddrTable;
 	ULONG ulIpAddrTableSize = sizeof(miatIpAddrTable);
 	DWORD dwGetIpAddrTableResult = GetIpAddrTable(&miatIpAddrTable, &ulIpAddrTableSize, FALSE);
-	if ((NO_ERROR == dwGetIpAddrTableResult) || (ERROR_INSUFFICIENT_BUFFER == dwGetIpAddrTableResult))  // Technically, if NO_ERROR was returned, we don't need to allocate a buffer - but it's easier to do so anyway - and because we need more data than fits in the default buffer, this would only be wasteful in the error case
-	{
-		const ULONG ulIpAddrTableSizeAllocated = ulIpAddrTableSize;
-		BYTE *const pbIpAddrTableBuffer = (BYTE *)LocalAlloc(LMEM_FIXED, ulIpAddrTableSizeAllocated);
-		if (0 != pbIpAddrTableBuffer) {
-			dwGetIpAddrTableResult = GetIpAddrTable((MIB_IPADDRTABLE *)pbIpAddrTableBuffer, &ulIpAddrTableSize, FALSE);
-			if ((NO_ERROR == dwGetIpAddrTableResult) && (ulIpAddrTableSizeAllocated <= ulIpAddrTableSize)) {
-				const MIB_IPADDRTABLE *const pmiatIpAddrTable = (MIB_IPADDRTABLE *)pbIpAddrTableBuffer;
-				if (2 == pmiatIpAddrTable->dwNumEntries) {
-					const bool loopbackAtIndex0 = DWValuetoIP(0x7f000001) == pmiatIpAddrTable->table[0].dwAddr;
-					const bool loopbackAtIndex1 = DWValuetoIP(0x7f000001) == pmiatIpAddrTable->table[1].dwAddr;
-					if (loopbackAtIndex0 ^ loopbackAtIndex1) {
-						const int tableIndex = loopbackAtIndex1 ? 0 : 1;
-						OUTPUT((TEXT("IP Address being used:")));
-						const DWORD dwAddr = pmiatIpAddrTable->table[tableIndex].dwAddr;
-						if (0 != dwAddr) {
-							const DWORD dwMask = pmiatIpAddrTable->table[tableIndex].dwMask;
-							const DWORD dwAddrValue = DWIPtoValue(dwAddr);
-							const DWORD dwMaskValue = DWIPtoValue(dwMask);
-							const DWORD dwMinAddrValue = ((dwAddrValue & dwMaskValue) | 2);  // Skip x.x.x.1 (default router address)
-							const DWORD dwMaxAddrValue = ((dwAddrValue & dwMaskValue) | (~(dwMaskValue | 1)));
-							const DWORD dwMinAddr = DWValuetoIP(dwMinAddrValue);
-							const DWORD dwMaxAddr = DWValuetoIP(dwMaxAddrValue);
-							OUTPUT((TEXT("%d.%d.%d.%d - Subnet:%d.%d.%d.%d - Range:[%d.%d.%d.%d-%d.%d.%d.%d]"),
-								DWIP0(dwAddr), DWIP1(dwAddr), DWIP2(dwAddr), DWIP3(dwAddr),
-								DWIP0(dwMask), DWIP1(dwMask), DWIP2(dwMask), DWIP3(dwMask),
-								DWIP0(dwMinAddr), DWIP1(dwMinAddr), DWIP2(dwMinAddr), DWIP3(dwMinAddr),
-								DWIP0(dwMaxAddr), DWIP1(dwMaxAddr), DWIP2(dwMaxAddr), DWIP3(dwMaxAddr)));
-							if (dwMinAddrValue <= dwMaxAddrValue) {
-								*pdwAddr = dwAddr;
-								*pdwMask = dwMask;
-								*pdwMinAddr = dwMinAddr;
-								*pdwMaxAddr = dwMaxAddr;
-								bSuccess = true;
-							}
-							else {
-								OUTPUT_ERROR((TEXT("Not enough IP addresses available in the current subnet.")));
-							}
-						}
-						else {
-							OUTPUT_ERROR((TEXT("IP Address is 0.0.0.0 - no network is available on this machine.")));
-							OUTPUT_ERROR((TEXT("[APIPA (Auto-IP) may not have assigned an IP address yet.]")));
-						}
+	// Technically, if NO_ERROR was returned, we don't need to allocate a buffer - but it's easier to do so anyway - and because we need more data than fits in the default buffer, this would only be wasteful in the error case
+	if ((NO_ERROR != dwGetIpAddrTableResult) && (ERROR_INSUFFICIENT_BUFFER != dwGetIpAddrTableResult)) {
+		throw GetIPInfoException("Unable to query IP address table.");
+		return;
+	}
+
+	const ULONG ulIpAddrTableSizeAllocated = ulIpAddrTableSize;
+	BYTE *const pbIpAddrTableBuffer = (BYTE *)LocalAlloc(LMEM_FIXED, ulIpAddrTableSizeAllocated);
+	if (0 == pbIpAddrTableBuffer) {
+		throw GetIPInfoException("Insufficient memory for IP address table.");
+		LocalFree(pbIpAddrTableBuffer);
+		return;
+	}
+
+	dwGetIpAddrTableResult = GetIpAddrTable((MIB_IPADDRTABLE *)pbIpAddrTableBuffer, &ulIpAddrTableSize, FALSE);
+	if ((NO_ERROR == dwGetIpAddrTableResult) && (ulIpAddrTableSizeAllocated <= ulIpAddrTableSize)) {
+		const MIB_IPADDRTABLE *const pmiatIpAddrTable = (MIB_IPADDRTABLE *)pbIpAddrTableBuffer;
+		if (true) { //DEBUG
+		//if (2 == pmiatIpAddrTable->dwNumEntries) {
+			const bool loopbackAtIndex0 = DWValuetoIP(0x7f000001) == pmiatIpAddrTable->table[0].dwAddr;
+			const bool loopbackAtIndex1 = DWValuetoIP(0x7f000001) == pmiatIpAddrTable->table[1].dwAddr;
+			if (true) { //DEBUG
+			//if (loopbackAtIndex0 ^ loopbackAtIndex1) {
+				const int tableIndex = loopbackAtIndex1 ? 0 : 1;
+				std::cout << "IP Address being used:\n";
+				const DWORD dwAddr = pmiatIpAddrTable->table[tableIndex].dwAddr;
+				if (0 != dwAddr) {
+					const DWORD dwMask = pmiatIpAddrTable->table[tableIndex].dwMask;
+					const DWORD dwAddrValue = DWIPtoValue(dwAddr);
+					const DWORD dwMaskValue = DWIPtoValue(dwMask);
+					const DWORD dwMinAddrValue = ((dwAddrValue & dwMaskValue) | 2);  // Skip x.x.x.1 (default router address)
+					const DWORD dwMaxAddrValue = ((dwAddrValue & dwMaskValue) | (~(dwMaskValue | 1)));
+					const DWORD dwMinAddr = DWValuetoIP(dwMinAddrValue);
+					const DWORD dwMaxAddr = DWValuetoIP(dwMaxAddrValue);
+					
+					printf("%d.%d.%d.%d - Subnet:%d.%d.%d.%d - Range:[%d.%d.%d.%d-%d.%d.%d.%d]\n",
+						DWIP0(dwAddr), DWIP1(dwAddr), DWIP2(dwAddr), DWIP3(dwAddr),
+						DWIP0(dwMask), DWIP1(dwMask), DWIP2(dwMask), DWIP3(dwMask),
+						DWIP0(dwMinAddr), DWIP1(dwMinAddr), DWIP2(dwMinAddr), DWIP3(dwMinAddr),
+						DWIP0(dwMaxAddr), DWIP1(dwMaxAddr), DWIP2(dwMaxAddr), DWIP3(dwMaxAddr));
+
+					if (dwMinAddrValue <= dwMaxAddrValue) {
+						*pdwAddr = dwAddr;
+						*pdwMask = dwMask;
+						*pdwMinAddr = dwMinAddr;
+						*pdwMaxAddr = dwMaxAddr;
 					}
 					else {
-						OUTPUT_ERROR((TEXT("Unsupported IP address configuration.")));
-						OUTPUT_ERROR((TEXT("[Expected to find loopback address and one other.]")));
+						throw GetIPInfoException("Not enough IP addresses available in the current subnet.");
 					}
 				}
 				else {
-					OUTPUT_ERROR((TEXT("Too many or too few IP addresses are present on this machine.")));
-					OUTPUT_ERROR((TEXT("[Routing can not be bypassed.]")));
+					throw GetIPInfoException("IP Address is 0.0.0.0 - no network is available on this machine. [APIPA (Auto-IP) may not have assigned an IP address yet.]");
 				}
 			}
 			else {
-				OUTPUT_ERROR((TEXT("Unable to query IP address table.")));
+				throw GetIPInfoException("Unsupported IP address configuration. [Expected to find loopback address and one other.]");
 			}
-		 	assert(0 == LocalFree(pbIpAddrTableBuffer));
 		}
 		else {
-			OUTPUT_ERROR((TEXT("Insufficient memory for IP address table.")));
+			throw GetIPInfoException("Too many or too few IP addresses are present on this machine. [Routing can not be bypassed.]");
 		}
 	}
 	else {
-		OUTPUT_ERROR((TEXT("Unable to query IP address table.")));
+		throw GetIPInfoException("Unable to query IP address table.");
 	}
-	return bSuccess;
+	LocalFree(pbIpAddrTableBuffer);
 }
 
 bool InitializeDHCPServer(SOCKET *const psServerSocket, const DWORD dwServerAddr, char *const pcsServerHostName, const size_t stServerHostNameLength) {
@@ -120,15 +124,15 @@ bool InitializeDHCPServer(SOCKET *const psServerSocket, const DWORD dwServerAddr
 				bSuccess = true;
 			}
 			else {
-				OUTPUT_ERROR((TEXT("Unable to set socket options.")));
+				throw SocketException("Unable to set socket options.");
 			}
 		}
 		else {
-			OUTPUT_ERROR((TEXT("Unable to bind to server socket (port %d)."), DHCP_SERVER_PORT));
+			throw SocketException("Unable to bind to server socket (port 67).");
 		}
 	}
 	else {
-		OUTPUT_ERROR((TEXT("Unable to open server socket (port %d)."), DHCP_SERVER_PORT));
+		throw SocketException("Unable to open server socket (port 67).");
 	}
 	return bSuccess;
 }
@@ -322,22 +326,23 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char *const pcsS
 								pdhcpmReply->yiaddr = dwOfferAddr;
 								pdhcpsoServerOptions->pbMessageType[2] = DHCPMessageType_OFFER;
 								bSendDHCPMessage = true;
-								OUTPUT((TEXT("Offering client \"%hs\" IP address %d.%d.%d.%d"), pcsClientHostName, DWIP0(dwOfferAddr), DWIP1(dwOfferAddr), DWIP2(dwOfferAddr), DWIP3(dwOfferAddr)));
+								printf("Offering client \"%hs\" IP address %d.%d.%d.%d\n", pcsClientHostName,
+									DWIP0(dwOfferAddr),DWIP1(dwOfferAddr), DWIP2(dwOfferAddr), DWIP3(dwOfferAddr));
 							}
 							else {
 							 	assert(0 == LocalFree(aiuiClientAddress.pbClientIdentifier));
-								OUTPUT_ERROR((TEXT("Insufficient memory to add client address.")));
+								throw RequestException("Insufficient memory to add client address.");
 							}
 							if (bSeenClientBefore) {
 							 	assert(0 == LocalFree(aiuiClientAddress.pbClientIdentifier));
 							}
 						}
 						else {
-							OUTPUT_ERROR((TEXT("Insufficient memory to add client address.")));
+							throw RequestException("Insufficient memory to add client address.");
 						}
 					}
 					else {
-						OUTPUT_ERROR((TEXT("No more IP addresses available for client \"%hs\""), pcsClientHostName));
+						throw RequestException("No more IP addresses available for client.");
 					}
 				}
 				break;
@@ -396,14 +401,19 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char *const pcsS
 						pdhcpmReply->ciaddr = dwClientPreviousOfferAddr;
 						pdhcpmReply->yiaddr = dwClientPreviousOfferAddr;
 						bSendDHCPMessage = true;
-						OUTPUT((TEXT("Acknowledging client \"%hs\" has IP address %d.%d.%d.%d"), pcsClientHostName, DWIP0(dwClientPreviousOfferAddr), DWIP1(dwClientPreviousOfferAddr), DWIP2(dwClientPreviousOfferAddr), DWIP3(dwClientPreviousOfferAddr)));
+						printf("Acknowledging client \"%hs\" has IP address %d.%d.%d.%d\n",
+							pcsClientHostName,
+							DWIP0(dwClientPreviousOfferAddr),
+							DWIP1(dwClientPreviousOfferAddr),
+							DWIP2(dwClientPreviousOfferAddr),
+							DWIP3(dwClientPreviousOfferAddr));
 						break;
 					case DHCPMessageType_NAK:
 						C_ASSERT(0 == option_PAD);
 						ZeroMemory(pdhcpsoServerOptions->pbLeaseTime, sizeof(pdhcpsoServerOptions->pbLeaseTime));
 						ZeroMemory(pdhcpsoServerOptions->pbSubnetMask, sizeof(pdhcpsoServerOptions->pbSubnetMask));
 						bSendDHCPMessage = true;
-						OUTPUT((TEXT("Denying client \"%hs\" unoffered IP address."), pcsClientHostName));
+						printf("Denying client \"%hs\" unoffered IP address.\n", pcsClientHostName);
 						break;
 					default:
 						// Nothing to do
@@ -511,20 +521,20 @@ bool ReadDHCPClientRequests(const SOCKET sServerSocket, const char *const pcsSer
 			else {
 				iLastError = WSAGetLastError();
 				if (WSAENOTSOCK == iLastError) {
-					OUTPUT((TEXT("Stopping server request handler.")));
+					throw SocketException("Stopping server request handler.");
 				}
 				else if (WSAEINTR == iLastError) {
-					OUTPUT((TEXT("Socket operation was cancelled.")));
+					throw SocketException("Socket operation was cancelled.");
 				}
 				else {
-					OUTPUT_ERROR((TEXT("Call to recvfrom returned error %d."), iLastError));
+					throw SocketException("Call to recvfrom returned error.");
 				}
 			}
 		}
-	 	assert(0 == LocalFree(pbReadBuffer));
+	 	LocalFree(pbReadBuffer);
 	}
 	else {
-		OUTPUT_ERROR((TEXT("Unable to allocate memory for client datagram read buffer.")));
+		throw RequestException("Unable to allocate memory for client datagram read buffer.");
 	}
 	return bSuccess;
 }
