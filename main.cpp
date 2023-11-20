@@ -19,8 +19,8 @@ DHCPConfig GetIPAddrInfo() {
 		return DHCPConfig{};
 	}
 
-	const bool loopbackAtIndex0 = DWValuetoIP(0x7f000001) == addrInfoList[0].address;
-	const bool loopbackAtIndex1 = DWValuetoIP(0x7f000001) == addrInfoList[1].address;
+	const bool loopbackAtIndex0 = ValuetoIP(0x7f000001) == addrInfoList[0].address;
+	const bool loopbackAtIndex1 = ValuetoIP(0x7f000001) == addrInfoList[1].address;
 	if (loopbackAtIndex0 == loopbackAtIndex1) {
 		std::cout << "Unsupported IP address configuration. [Expected to find loopback address and one other.]\n";
 		return DHCPConfig{};
@@ -35,18 +35,15 @@ DHCPConfig GetIPAddrInfo() {
 	}
 
 	const DWORD dwMask = addrInfoList[tableIndex].mask;
-	const DWORD dwAddrValue = DWIPtoValue(dwAddr);
-	const DWORD dwMaskValue = DWIPtoValue(dwMask);
+	const DWORD dwAddrValue = IPtoValue(dwAddr);
+	const DWORD dwMaskValue = IPtoValue(dwMask);
 	const DWORD dwMinAddrValue = ((dwAddrValue & dwMaskValue) | 2);  // Skip x.x.x.1 (default router address)
 	const DWORD dwMaxAddrValue = ((dwAddrValue & dwMaskValue) | (~(dwMaskValue | 1)));
-	const DWORD dwMinAddr = DWValuetoIP(dwMinAddrValue);
-	const DWORD dwMaxAddr = DWValuetoIP(dwMaxAddrValue);
+	const DWORD dwMinAddr = ValuetoIP(dwMinAddrValue);
+	const DWORD dwMaxAddr = ValuetoIP(dwMaxAddrValue);
 
-	printf("%d.%d.%d.%d - Subnet:%d.%d.%d.%d - Range:[%d.%d.%d.%d-%d.%d.%d.%d]\n",
-		DWIP0(dwAddr), DWIP1(dwAddr), DWIP2(dwAddr), DWIP3(dwAddr),
-		DWIP0(dwMask), DWIP1(dwMask), DWIP2(dwMask), DWIP3(dwMask),
-		DWIP0(dwMinAddr), DWIP1(dwMinAddr), DWIP2(dwMinAddr), DWIP3(dwMinAddr),
-		DWIP0(dwMaxAddr), DWIP1(dwMaxAddr), DWIP2(dwMaxAddr), DWIP3(dwMaxAddr));
+	std::cout << IPAddrToString(dwAddr) << " - Subnet:" << IPAddrToString(dwMask) << " - Range:["
+		<< IPAddrToString(dwMinAddr) << "-" << IPAddrToString(dwMaxAddr) << "]\n";
 
 	if (dwMinAddrValue > dwMaxAddrValue) {
 		std::cout << "No network is available on this machine. [The subnet mask is incorrect.]\n";
@@ -75,17 +72,15 @@ void main(int /*argc*/, char ** /*argv*/) {
 		}
 
 		SetDiscoverCallback([](char *clientHostName, DWORD offerAddr) {
-			printf("Offering client \"%hs\" IP address %d.%d.%d.%d\n", clientHostName,
-			DWIP0(offerAddr), DWIP1(offerAddr), DWIP2(offerAddr), DWIP3(offerAddr));
+			std::cout << "Offering client \"" << clientHostName << "\" IP address " << IPAddrToString(offerAddr) << "\n";
 		});
 
 		SetACKCallback([](char *clientHostName, DWORD offerAddr) {
-			printf("Acknowledging client \"%hs\" has IP address %d.%d.%d.%d\n", clientHostName,
-			DWIP0(offerAddr), DWIP1(offerAddr), DWIP2(offerAddr), DWIP3(offerAddr));
+			std::cout << "Acknowledging client \"" << clientHostName << "\" has IP address " << IPAddrToString(offerAddr) << "\n";
 		});
 
 		SetNAKCallback([](char *clientHostName, DWORD offerAddr) {
-			printf("Denying client \"%hs\" unoffered IP address.\n", clientHostName);
+			std::cout << "Denying client \"" << clientHostName << "\" unoffered IP address.\n";
 		});
 
 		Init(config.addrInfo.address);

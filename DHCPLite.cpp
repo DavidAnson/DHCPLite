@@ -20,6 +20,34 @@ int FindIndexOf(const VectorAddressInUseInformation *const pvAddressesInUse, con
 	return -1;
 }
 
+DWORD IPtoValue(DWORD ip) {
+	// Convert between big and small endian order
+	DWORD value = 0;
+	BYTE *valueBytes = (BYTE *)&value;
+	BYTE *ipBytes = (BYTE *)&ip;
+
+	for (size_t i = 0; i < 4; i++)
+		valueBytes[i] = ipBytes[3 - i];
+
+	return value;
+}
+
+DWORD ValuetoIP(DWORD value) {
+	return IPtoValue(value);
+}
+
+std::string IPAddrToString(DWORD address) {
+	BYTE *addrBytes = (BYTE *)&address;
+
+	std::string str = "";
+	for (size_t i = 0; i < 3; i++) {
+		str.append(std::to_string(addrBytes[i]) + ".");
+	}
+	str.append(std::to_string(addrBytes[3]));
+
+	return str;
+}
+
 std::vector<IPAddrInfo> GetIPAddrInfoList() {
 	std::vector<IPAddrInfo> infoList;
 
@@ -196,7 +224,7 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char *const pcsS
 				const int iIndex = FindIndexOf(pvAddressesInUse, AddressInUseInformationClientIdentifierFilter, &cid);
 				if (-1 != iIndex) {
 					const AddressInUseInformation aiui = pvAddressesInUse->at((size_t)iIndex);
-					dwClientPreviousOfferAddr = DWValuetoIP(aiui.dwAddrValue);
+					dwClientPreviousOfferAddr = ValuetoIP(aiui.dwAddrValue);
 					bSeenClientBefore = true;
 				}
 				// Server message handling
@@ -246,13 +274,13 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char *const pcsS
 				{
 					// RFC 2131 section 4.3.1
 					// UNSUPPORTED: Requested IP Address option
-					static DWORD dwServerLastOfferAddrValue = DWIPtoValue(dwMaxAddr);  // Initialize to max to wrap and offer min first
-					const DWORD dwMinAddrValue = DWIPtoValue(dwMinAddr);
-					const DWORD dwMaxAddrValue = DWIPtoValue(dwMaxAddr);
+					static DWORD dwServerLastOfferAddrValue = IPtoValue(dwMaxAddr);  // Initialize to max to wrap and offer min first
+					const DWORD dwMinAddrValue = IPtoValue(dwMinAddr);
+					const DWORD dwMaxAddrValue = IPtoValue(dwMaxAddr);
 					DWORD dwOfferAddrValue;
 					bool bOfferAddrValueValid = false;
 					if (bSeenClientBefore) {
-						dwOfferAddrValue = DWIPtoValue(dwClientPreviousOfferAddr);
+						dwOfferAddrValue = IPtoValue(dwClientPreviousOfferAddr);
 						bOfferAddrValueValid = true;
 					}
 					else {
@@ -275,7 +303,7 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char *const pcsS
 					}
 					if (bOfferAddrValueValid) {
 						dwServerLastOfferAddrValue = dwOfferAddrValue;
-						const DWORD dwOfferAddr = DWValuetoIP(dwOfferAddrValue);
+						const DWORD dwOfferAddr = ValuetoIP(dwOfferAddrValue);
 					 	assert((0 != iRequestClientIdentifierDataSize) && (0 != pbRequestClientIdentifierData));
 						AddressInUseInformation aiuiClientAddress{};
 						aiuiClientAddress.dwAddrValue = dwOfferAddrValue;
@@ -505,7 +533,7 @@ void SetNAKCallback(MessageCallback callback) {
 }
 
 bool Init(const DWORD dwServerAddr) {
-	aiuiServerAddress.dwAddrValue = DWIPtoValue(dwServerAddr);
+	aiuiServerAddress.dwAddrValue = IPtoValue(dwServerAddr);
 	aiuiServerAddress.pbClientIdentifier = 0; // Server entry is only entry without a client ID
 	aiuiServerAddress.dwClientIdentifierSize = 0;
 	vAddressesInUse.push_back(aiuiServerAddress);

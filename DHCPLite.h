@@ -1,5 +1,6 @@
 #pragma once
 #include <vector>
+#include <string>
 #include <functional>
 #include <assert.h>
 #include <windows.h>
@@ -24,12 +25,9 @@ public:
 	RequestException(const char *Message) : DHCPException(Message) {}
 };
 
-#define DWIP0(dw) (((dw)>> 0) & 0xff)
-#define DWIP1(dw) (((dw)>> 8) & 0xff)
-#define DWIP2(dw) (((dw)>>16) & 0xff)
-#define DWIP3(dw) (((dw)>>24) & 0xff)
-#define DWIPtoValue(dw) ((DWIP0(dw)<<24) | (DWIP1(dw)<<16) | (DWIP2(dw)<<8) | DWIP3(dw))
-#define DWValuetoIP(dw) ((DWIP0(dw)<<24) | (DWIP1(dw)<<16) | (DWIP2(dw)<<8) | DWIP3(dw))
+DWORD IPtoValue(DWORD ip);
+DWORD ValuetoIP(DWORD value);
+std::string IPAddrToString(DWORD address);
 
 const char pcsServerName[] = "DHCPLite DHCP Server";
 
