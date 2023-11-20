@@ -169,7 +169,7 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char *const pcsS
 		DHCPMessageTypes dhcpmtMessageType;
 		if (GetDHCPMessageType(pbOptions, iOptionsSize, &dhcpmtMessageType)) {
 			// Determine client host name
-			char pcsClientHostName[MAX_HOSTNAME_LENGTH];
+			char pcsClientHostName[MAX_HOSTNAME_LENGTH]{};
 			pcsClientHostName[0] = '\0';
 			const BYTE *pbRequestHostNameData;
 			unsigned int iRequestHostNameDataSize;
@@ -273,7 +273,7 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char *const pcsS
 						dwServerLastOfferAddrValue = dwOfferAddrValue;
 						const DWORD dwOfferAddr = DWValuetoIP(dwOfferAddrValue);
 					 	assert((0 != iRequestClientIdentifierDataSize) && (0 != pbRequestClientIdentifierData));
-						AddressInUseInformation aiuiClientAddress;
+						AddressInUseInformation aiuiClientAddress{};
 						aiuiClientAddress.dwAddrValue = dwOfferAddrValue;
 						aiuiClientAddress.pbClientIdentifier = (BYTE *)LocalAlloc(LMEM_FIXED, iRequestClientIdentifierDataSize);
 						if (0 != aiuiClientAddress.pbClientIdentifier) {
@@ -431,7 +431,7 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char *const pcsS
 						}
 						break;
 						default:
-						 	assert(!"Invalid DHCPMessageType");
+							assert(!"Invalid DHCPMessageType");
 							break;
 						}
 					}
@@ -439,12 +439,12 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char *const pcsS
 						ulAddr = pdhcpmRequest->giaddr;  // Already in network order
 						pdhcpmReply->flags |= BROADCAST_FLAG;  // Indicate to the relay agent that it must broadcast
 					}
-				 	assert((INADDR_LOOPBACK != ulAddr) && (0 != ulAddr));
-					SOCKADDR_IN saClientAddress;
+					assert((INADDR_LOOPBACK != ulAddr) && (0 != ulAddr));
+					SOCKADDR_IN saClientAddress{};
 					saClientAddress.sin_family = AF_INET;
 					saClientAddress.sin_addr.s_addr = ulAddr;
 					saClientAddress.sin_port = htons((u_short)DHCP_CLIENT_PORT);
-				 	assert(SOCKET_ERROR != sendto(sServerSocket, (char *)pdhcpmReply, sizeof(bDHCPMessageBuffer), 0, (SOCKADDR *)&saClientAddress, sizeof(saClientAddress)));
+					assert(SOCKET_ERROR != sendto(sServerSocket, (char *)pdhcpmReply, sizeof(bDHCPMessageBuffer), 0, (SOCKADDR *)&saClientAddress, sizeof(saClientAddress)));
 				}
 			}
 			else {
@@ -461,7 +461,7 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char *const pcsS
 }
 
 bool ReadDHCPClientRequests(const SOCKET sServerSocket, const char *const pcsServerHostName, VectorAddressInUseInformation *const pvAddressesInUse, const DWORD dwServerAddr, const DWORD dwMask, const DWORD dwMinAddr, const DWORD dwMaxAddr) {
- 	assert((INVALID_SOCKET != sServerSocket) && (0 != pcsServerHostName) && (0 != pvAddressesInUse) && (0 != dwServerAddr) && (0 != dwMask) && (0 != dwMinAddr) && (0 != dwMaxAddr));
+	assert((INVALID_SOCKET != sServerSocket) && (0 != pcsServerHostName) && (0 != pvAddressesInUse) && (0 != dwServerAddr) && (0 != dwMask) && (0 != dwMinAddr) && (0 != dwMaxAddr));
 
 	BYTE *const pbReadBuffer = (BYTE *)LocalAlloc(LMEM_FIXED, MAX_UDP_MESSAGE_SIZE);
 	if (0 == pbReadBuffer) {
@@ -473,7 +473,7 @@ bool ReadDHCPClientRequests(const SOCKET sServerSocket, const char *const pcsSer
 	assert(WSAENOTSOCK != iLastError);
 
 	while (WSAENOTSOCK != iLastError) {
-		SOCKADDR_IN saClientAddress;
+		SOCKADDR_IN saClientAddress{};
 		int iClientAddressSize = sizeof(saClientAddress);
 		const int iBytesReceived = recvfrom(sServerSocket, (char *)pbReadBuffer, MAX_UDP_MESSAGE_SIZE, 0, (SOCKADDR *)(&saClientAddress), &iClientAddressSize);
 		if (SOCKET_ERROR != iBytesReceived) {
@@ -481,19 +481,57 @@ bool ReadDHCPClientRequests(const SOCKET sServerSocket, const char *const pcsSer
 			ProcessDHCPClientRequest(sServerSocket, pcsServerHostName, pbReadBuffer, iBytesReceived, pvAddressesInUse, dwServerAddr, dwMask, dwMinAddr, dwMaxAddr);
 		}
 		else {
-			switch (WSAGetLastError()) {
-			case WSAENOTSOCK:
-				throw SocketException("Stopping server request handler.");
-				break;
-			case WSAEINTR:
-				throw SocketException("Socket operation was cancelled.");
-				break;
-			default:
+			iLastError = WSAGetLastError();
+			if (iLastError != WSAENOTSOCK && iLastError != WSAEINTR)
 				throw SocketException("Call to recvfrom returned error.");
-				break;
-			}
 		}
 	}
 	LocalFree(pbReadBuffer);
+	return true;
+}
+
+SOCKET sServerSocket = INVALID_SOCKET;  // Global to allow ConsoleCtrlHandlerRoutine access to it
+VectorAddressInUseInformation vAddressesInUse;
+AddressInUseInformation aiuiServerAddress{};
+char pcsServerHostName[MAX_HOSTNAME_LENGTH];
+
+bool Init(const DWORD dwServerAddr) {
+	aiuiServerAddress.dwAddrValue = DWIPtoValue(dwServerAddr);
+	aiuiServerAddress.pbClientIdentifier = 0; // Server entry is only entry without a client ID
+	aiuiServerAddress.dwClientIdentifierSize = 0;
+	vAddressesInUse.push_back(aiuiServerAddress);
+
+	WSADATA wsaData;
+	if (NO_ERROR == WSAStartup(MAKEWORD(1, 1), &wsaData)) {
+		return InitializeDHCPServer(&sServerSocket, dwServerAddr, pcsServerHostName, sizeof(pcsServerHostName));
+	}
+	else {
+		throw SocketException("Unable to initialize WinSock.");
+	}
+
+	return false;
+}
+
+void Start(const DWORD dwServerAddr, const DWORD dwMask, const DWORD dwMinAddr, const DWORD dwMaxAddr) {
+	assert(ReadDHCPClientRequests(sServerSocket, pcsServerHostName, &vAddressesInUse, dwServerAddr, dwMask, dwMinAddr, dwMaxAddr));
+}
+
+void Close() {
+	if (INVALID_SOCKET != sServerSocket) {
+		assert(NO_ERROR == closesocket(sServerSocket));
+		sServerSocket = INVALID_SOCKET;
+	}
+}
+
+bool Cleanup() {
+	if (!WSACleanup()) return false;
+
+	for (size_t i = 0; i < vAddressesInUse.size(); i++) {
+		aiuiServerAddress = vAddressesInUse.at(i);
+		if (0 != aiuiServerAddress.pbClientIdentifier) {
+			LocalFree(aiuiServerAddress.pbClientIdentifier);
+		}
+	}
+
 	return true;
 }

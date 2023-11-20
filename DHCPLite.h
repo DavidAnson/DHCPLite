@@ -123,3 +123,11 @@ std::vector<IPAddrInfo> GetIPAddrInfoList();
 bool InitializeDHCPServer(SOCKET *const psServerSocket, const DWORD dwServerAddr, char *const pcsServerHostName, const size_t stServerHostNameLength);
 
 bool ReadDHCPClientRequests(const SOCKET sServerSocket, const char *const pcsServerHostName, VectorAddressInUseInformation *const pvAddressesInUse, const DWORD dwServerAddr, const DWORD dwMask, const DWORD dwMinAddr, const DWORD dwMaxAddr);
+
+bool Init(const DWORD dwServerAddr);
+
+void Start(const DWORD dwServerAddr, const DWORD dwMask, const DWORD dwMinAddr, const DWORD dwMaxAddr);
+
+void Close();
+
+bool Cleanup();

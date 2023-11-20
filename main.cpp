@@ -2,14 +2,11 @@
 #include <iostream>
 #include <windows.h>
 
-SOCKET sServerSocket = INVALID_SOCKET;  // Global to allow ConsoleCtrlHandlerRoutine access to it
-
 BOOL WINAPI ConsoleCtrlHandlerRoutine(DWORD dwCtrlType) {
 	if ((CTRL_C_EVENT == dwCtrlType) || (CTRL_BREAK_EVENT == dwCtrlType)) {
-		if (INVALID_SOCKET != sServerSocket) {
-			assert(0 == closesocket(sServerSocket));
-			sServerSocket = INVALID_SOCKET;
-		}
+		Close();
+		std::cout << "Stopping server request handler.\n";
+
 		return TRUE;
 	}
 	return FALSE;
@@ -85,43 +82,16 @@ void main(int /*argc*/, char ** /*argv*/) {
 		}
 	}
 	catch (GetIPAddrException e) {
-		std::cout << e.what() << "\n";
+		std::cout << "[Error] " << e.what() << "\n";
 		system("pause");
 		return;
 	}
 	assert((DWValuetoIP(dwMinAddr) <= DWValuetoIP(dwServerAddr)) && (DWValuetoIP(dwServerAddr) <= DWValuetoIP(dwMaxAddr)));
 
-	VectorAddressInUseInformation vAddressesInUse;
-	AddressInUseInformation aiuiServerAddress;
-	aiuiServerAddress.dwAddrValue = DWIPtoValue(dwServerAddr);
-	aiuiServerAddress.pbClientIdentifier = 0;  // Server entry is only entry without a client ID
-	aiuiServerAddress.dwClientIdentifierSize = 0;
-	vAddressesInUse.push_back(aiuiServerAddress);
-	
-	WSADATA wsaData;
-	if (NO_ERROR == WSAStartup(MAKEWORD(1, 1), &wsaData)) {
-		std::cout << "Server is running...  (Press Ctrl+C to shutdown.)\n";
-
-		char pcsServerHostName[MAX_HOSTNAME_LENGTH];
-		if (InitializeDHCPServer(&sServerSocket, dwServerAddr, pcsServerHostName, sizeof(pcsServerHostName))) {
-			assert(ReadDHCPClientRequests(sServerSocket, pcsServerHostName, &vAddressesInUse, dwServerAddr, dwMask, dwMinAddr, dwMaxAddr));
-			if (INVALID_SOCKET != sServerSocket) {
-				assert(NO_ERROR == closesocket(sServerSocket));
-				sServerSocket = INVALID_SOCKET;
-			}
-		}
-		assert(NO_ERROR == WSACleanup());
-	}
-	else {
-		std::cout << "[Error] Unable to initialize WinSock.\n";
-	}
-
-	for (size_t i = 0; i < vAddressesInUse.size(); i++) {
-		aiuiServerAddress = vAddressesInUse.at(i);
-		if (0 != aiuiServerAddress.pbClientIdentifier) {
-			LocalFree(aiuiServerAddress.pbClientIdentifier);
-		}
-	}
+	Init(dwServerAddr);
+	std::cout << "Server is running...  (Press Ctrl+C to shutdown.)\n";
+	Start(dwServerAddr, dwMask, dwMinAddr, dwMaxAddr);
+	Cleanup();
 
 	system("pause");
 }
