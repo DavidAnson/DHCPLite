@@ -30,7 +30,7 @@ public:
 #define DWIPtoValue(dw) ((DWIP0(dw)<<24) | (DWIP1(dw)<<16) | (DWIP2(dw)<<8) | DWIP3(dw))
 #define DWValuetoIP(dw) ((DWIP0(dw)<<24) | (DWIP1(dw)<<16) | (DWIP2(dw)<<8) | DWIP3(dw))
 
-const char pcsServerName[] = "DHCPLite DHCP server";
+const char pcsServerName[] = "DHCPLite DHCP Server";
 
 // Maximum size of a UDP datagram (see RFC 768)
 #define MAX_UDP_MESSAGE_SIZE ((65536)-8)
@@ -119,8 +119,6 @@ struct IPAddrInfo {
 };
 
 std::vector<IPAddrInfo> GetIPAddrInfoList();
-
-bool GetIPAddressInformation(DWORD *const pdwAddr, DWORD *const pdwMask, DWORD *const pdwMinAddr, DWORD *const pdwMaxAddr);
 
 bool InitializeDHCPServer(SOCKET *const psServerSocket, const DWORD dwServerAddr, char *const pcsServerHostName, const size_t stServerHostNameLength);
 
