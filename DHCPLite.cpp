@@ -512,8 +512,9 @@ bool Init(const DWORD dwServerAddr) {
 	return false;
 }
 
-void Start(const DWORD dwServerAddr, const DWORD dwMask, const DWORD dwMinAddr, const DWORD dwMaxAddr) {
-	assert(ReadDHCPClientRequests(sServerSocket, pcsServerHostName, &vAddressesInUse, dwServerAddr, dwMask, dwMinAddr, dwMaxAddr));
+void Start(DHCPConfig config) {
+	assert(ReadDHCPClientRequests(sServerSocket, pcsServerHostName, &vAddressesInUse,
+		config.addrInfo.address, config.addrInfo.mask, config.minAddr, config.maxAddr));
 }
 
 void Close() {

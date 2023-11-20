@@ -12,18 +12,18 @@ BOOL WINAPI ConsoleCtrlHandlerRoutine(DWORD dwCtrlType) {
 	return FALSE;
 }
 
-bool GetIPAddrInfo(DWORD *const pdwAddr, DWORD *const pdwMask, DWORD *const pdwMinAddr, DWORD *const pdwMaxAddr) {
+DHCPConfig GetIPAddrInfo() {
 	auto addrInfoList = GetIPAddrInfoList();
 	if (2 != addrInfoList.size()) {
 		std::cout << "Too many or too few IP addresses are present on this machine. [Routing can not be bypassed.]\n";
-		return false;
+		return DHCPConfig{};
 	}
 
 	const bool loopbackAtIndex0 = DWValuetoIP(0x7f000001) == addrInfoList[0].address;
 	const bool loopbackAtIndex1 = DWValuetoIP(0x7f000001) == addrInfoList[1].address;
 	if (loopbackAtIndex0 == loopbackAtIndex1) {
 		std::cout << "Unsupported IP address configuration. [Expected to find loopback address and one other.]\n";
-		return false;
+		return DHCPConfig{};
 	}
 
 	const int tableIndex = loopbackAtIndex1 ? 0 : 1;
@@ -31,7 +31,7 @@ bool GetIPAddrInfo(DWORD *const pdwAddr, DWORD *const pdwMask, DWORD *const pdwM
 	const DWORD dwAddr = addrInfoList[tableIndex].address;
 	if (0 == dwAddr) {
 		std::cout << "IP Address is 0.0.0.0 - no network is available on this machine. [APIPA (Auto-IP) may not have assigned an IP address yet.]\n";
-		return false;
+		return DHCPConfig{};
 	}
 
 	const DWORD dwMask = addrInfoList[tableIndex].mask;
@@ -50,15 +50,10 @@ bool GetIPAddrInfo(DWORD *const pdwAddr, DWORD *const pdwMask, DWORD *const pdwM
 
 	if (dwMinAddrValue > dwMaxAddrValue) {
 		std::cout << "No network is available on this machine. [The subnet mask is incorrect.]\n";
-		return false;
+		return DHCPConfig{};
 	}
 
-	*pdwAddr = dwAddr;
-	*pdwMask = dwMask;
-	*pdwMinAddr = dwMinAddr;
-	*pdwMaxAddr = dwMaxAddr;
-
-	return true;
+	return DHCPConfig{ dwAddr, dwMask, dwMinAddr, dwMaxAddr };
 }
 
 void main(int /*argc*/, char ** /*argv*/) {
@@ -71,26 +66,22 @@ void main(int /*argc*/, char ** /*argv*/) {
 		return;
 	}
 
-	DWORD dwServerAddr;
-	DWORD dwMask;
-	DWORD dwMinAddr;
-	DWORD dwMaxAddr;
+	DHCPConfig config{};
 	try {
-		if (!GetIPAddrInfo(&dwServerAddr, &dwMask, &dwMinAddr, &dwMaxAddr)) {
+		config = GetIPAddrInfo();
+		if (config.addrInfo.address == 0) {
 			system("pause");
 			return;
 		}
+
+		Init(config.addrInfo.address);
+		std::cout << "Server is running...  (Press Ctrl+C to shutdown.)\n";
+		Start(config);
 	}
 	catch (GetIPAddrException e) {
 		std::cout << "[Error] " << e.what() << "\n";
-		system("pause");
-		return;
 	}
-	assert((DWValuetoIP(dwMinAddr) <= DWValuetoIP(dwServerAddr)) && (DWValuetoIP(dwServerAddr) <= DWValuetoIP(dwMaxAddr)));
 
-	Init(dwServerAddr);
-	std::cout << "Server is running...  (Press Ctrl+C to shutdown.)\n";
-	Start(dwServerAddr, dwMask, dwMinAddr, dwMaxAddr);
 	Cleanup();
 
 	system("pause");

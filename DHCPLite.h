@@ -118,6 +118,12 @@ struct IPAddrInfo {
 	DWORD mask;
 };
 
+struct DHCPConfig {
+	IPAddrInfo addrInfo;
+	DWORD minAddr;
+	DWORD maxAddr;
+};
+
 std::vector<IPAddrInfo> GetIPAddrInfoList();
 
 bool InitializeDHCPServer(SOCKET *const psServerSocket, const DWORD dwServerAddr, char *const pcsServerHostName, const size_t stServerHostNameLength);
@@ -126,7 +132,7 @@ bool ReadDHCPClientRequests(const SOCKET sServerSocket, const char *const pcsSer
 
 bool Init(const DWORD dwServerAddr);
 
-void Start(const DWORD dwServerAddr, const DWORD dwMask, const DWORD dwMinAddr, const DWORD dwMaxAddr);
+void Start(DHCPConfig config);
 
 void Close();
 
