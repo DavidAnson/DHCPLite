@@ -1,5 +1,6 @@
 #include "DHCPLite.h"
 #include <iostream>
+#include <tchar.h>
 #include <iphlpapi.h>
 #include <iprtrmib.h>
 
@@ -15,87 +16,41 @@ int FindIndexOf(const VectorAddressInUseInformation *const pvAddressesInUse, con
 	return -1;
 }
 
-bool GetIPAddressInformation(DWORD *const pdwAddr, DWORD *const pdwMask, DWORD *const pdwMinAddr, DWORD *const pdwMaxAddr) {
- 	assert((0 != pdwAddr) && (0 != pdwMask) && (0 != pdwMinAddr) && (0 != pdwMaxAddr));
+std::vector<IPAddrInfo> GetIPAddrInfoList() {
+	std::vector<IPAddrInfo> infoList;
 
-	bool bSuccess = false;
 	MIB_IPADDRTABLE miatIpAddrTable;
 	ULONG ulIpAddrTableSize = sizeof(miatIpAddrTable);
 	DWORD dwGetIpAddrTableResult = GetIpAddrTable(&miatIpAddrTable, &ulIpAddrTableSize, FALSE);
 	// Technically, if NO_ERROR was returned, we don't need to allocate a buffer - but it's easier to do so anyway - and because we need more data than fits in the default buffer, this would only be wasteful in the error case
 	if ((NO_ERROR != dwGetIpAddrTableResult) && (ERROR_INSUFFICIENT_BUFFER != dwGetIpAddrTableResult)) {
-		throw GetIPInfoException("Unable to query IP address table.");
-		return false;
+		throw GetIPAddrException("Unable to query IP address table.");
+		return infoList;
 	}
 
 	const ULONG ulIpAddrTableSizeAllocated = ulIpAddrTableSize;
 	BYTE *const pbIpAddrTableBuffer = (BYTE *)LocalAlloc(LMEM_FIXED, ulIpAddrTableSizeAllocated);
-	if (0 == pbIpAddrTableBuffer) {
-		throw GetIPInfoException("Insufficient memory for IP address table.");
+	if (nullptr == pbIpAddrTableBuffer) {
+		throw GetIPAddrException("Insufficient memory for IP address table.");
 		LocalFree(pbIpAddrTableBuffer);
-		return false;
+		return infoList;
 	}
 
 	dwGetIpAddrTableResult = GetIpAddrTable((MIB_IPADDRTABLE *)pbIpAddrTableBuffer, &ulIpAddrTableSize, FALSE);
 	if ((NO_ERROR != dwGetIpAddrTableResult) || (ulIpAddrTableSizeAllocated > ulIpAddrTableSize)) {
-		throw GetIPInfoException("Unable to query IP address table.");
+		throw GetIPAddrException("Unable to query IP address table.");
 		LocalFree(pbIpAddrTableBuffer);
-		return false;
+		return infoList;
 	}
 
 	const MIB_IPADDRTABLE *const pmiatIpAddrTable = (MIB_IPADDRTABLE *)pbIpAddrTableBuffer;
-	if (2 != pmiatIpAddrTable->dwNumEntries) {
-		throw GetIPInfoException("Too many or too few IP addresses are present on this machine. [Routing can not be bypassed.]");
-		LocalFree(pbIpAddrTableBuffer);
-		return false;
-	}
 
-	const bool loopbackAtIndex0 = DWValuetoIP(0x7f000001) == pmiatIpAddrTable->table[0].dwAddr;
-	const bool loopbackAtIndex1 = DWValuetoIP(0x7f000001) == pmiatIpAddrTable->table[1].dwAddr;
-	if (loopbackAtIndex0 == loopbackAtIndex1) {
-		throw GetIPInfoException("Unsupported IP address configuration. [Expected to find loopback address and one other.]");
-		LocalFree(pbIpAddrTableBuffer);
-		return false;
-	}
-
-	const int tableIndex = loopbackAtIndex1 ? 0 : 1;
-	std::cout << "IP Address being used:\n";
-	const DWORD dwAddr = pmiatIpAddrTable->table[tableIndex].dwAddr;
-	if (0 == dwAddr) {
-		throw GetIPInfoException("IP Address is 0.0.0.0 - no network is available on this machine. [APIPA (Auto-IP) may not have assigned an IP address yet.]");
-		LocalFree(pbIpAddrTableBuffer);
-		return false;
-	}
-
-	const DWORD dwMask = pmiatIpAddrTable->table[tableIndex].dwMask;
-	const DWORD dwAddrValue = DWIPtoValue(dwAddr);
-	const DWORD dwMaskValue = DWIPtoValue(dwMask);
-	const DWORD dwMinAddrValue = ((dwAddrValue & dwMaskValue) | 2);  // Skip x.x.x.1 (default router address)
-	const DWORD dwMaxAddrValue = ((dwAddrValue & dwMaskValue) | (~(dwMaskValue | 1)));
-	const DWORD dwMinAddr = DWValuetoIP(dwMinAddrValue);
-	const DWORD dwMaxAddr = DWValuetoIP(dwMaxAddrValue);
-
-	printf("%d.%d.%d.%d - Subnet:%d.%d.%d.%d - Range:[%d.%d.%d.%d-%d.%d.%d.%d]\n",
-		DWIP0(dwAddr), DWIP1(dwAddr), DWIP2(dwAddr), DWIP3(dwAddr),
-		DWIP0(dwMask), DWIP1(dwMask), DWIP2(dwMask), DWIP3(dwMask),
-		DWIP0(dwMinAddr), DWIP1(dwMinAddr), DWIP2(dwMinAddr), DWIP3(dwMinAddr),
-		DWIP0(dwMaxAddr), DWIP1(dwMaxAddr), DWIP2(dwMaxAddr), DWIP3(dwMaxAddr));
-
-	if (dwMinAddrValue <= dwMaxAddrValue) {
-		*pdwAddr = dwAddr;
-		*pdwMask = dwMask;
-		*pdwMinAddr = dwMinAddr;
-		*pdwMaxAddr = dwMaxAddr;
-
-		LocalFree(pbIpAddrTableBuffer);
-		return true;
-	}
-	else {
-		throw GetIPInfoException("Not enough IP addresses available in the current subnet.");
+	for (size_t i = 0; i < pmiatIpAddrTable->dwNumEntries; i++) {
+		infoList.push_back(IPAddrInfo{ pmiatIpAddrTable->table[i].dwAddr, pmiatIpAddrTable->table[i].dwMask });
 	}
 
 	LocalFree(pbIpAddrTableBuffer);
-	return false;
+	return infoList;
 }
 
 bool InitializeDHCPServer(SOCKET *const psServerSocket, const DWORD dwServerAddr, char *const pcsServerHostName, const size_t stServerHostNameLength) {

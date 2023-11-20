@@ -1,6 +1,5 @@
 #pragma once
 #include <vector>
-#include <tchar.h>
 #include <assert.h>
 #include <windows.h>
 
@@ -9,9 +8,9 @@ public:
 	DHCPException(const char *Message) : exception(Message, 1) {}
 };
 
-class GetIPInfoException : public DHCPException {
+class GetIPAddrException : public DHCPException {
 public:
-	GetIPInfoException(const char *Message) : DHCPException(Message) {}
+	GetIPAddrException(const char *Message) : DHCPException(Message) {}
 };
 
 class SocketException : public DHCPException {
@@ -113,6 +112,13 @@ struct AddressInUseInformation {
 	// SYSTEMTIME stExpireTime;  // If lease timeouts are needed
 };
 typedef std::vector<AddressInUseInformation> VectorAddressInUseInformation;
+
+struct IPAddrInfo {
+	DWORD address;
+	DWORD mask;
+};
+
+std::vector<IPAddrInfo> GetIPAddrInfoList();
 
 bool GetIPAddressInformation(DWORD *const pdwAddr, DWORD *const pdwMask, DWORD *const pdwMinAddr, DWORD *const pdwMaxAddr);
 
