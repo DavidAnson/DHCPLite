@@ -283,18 +283,14 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char *const pcsS
 						if (0 != aiuiClientAddress.pbClientIdentifier) {
 							CopyMemory(aiuiClientAddress.pbClientIdentifier, pbRequestClientIdentifierData, iRequestClientIdentifierDataSize);
 							aiuiClientAddress.dwClientIdentifierSize = iRequestClientIdentifierDataSize;
-							if (bSeenClientBefore) {
-								pvAddressesInUse->push_back(aiuiClientAddress);
-								pdhcpmReply->yiaddr = dwOfferAddr;
-								pdhcpsoServerOptions->pbMessageType[2] = DHCPMessageType_OFFER;
-								bSendDHCPMessage = true;
 
-								MessageCallback_Discover(pcsClientHostName, dwOfferAddr);
-							}
-							else {
-							 	assert(0 == LocalFree(aiuiClientAddress.pbClientIdentifier));
-								throw RequestException("Insufficient memory to add client address.");
-							}
+							pvAddressesInUse->push_back(aiuiClientAddress);
+							pdhcpmReply->yiaddr = dwOfferAddr;
+							pdhcpsoServerOptions->pbMessageType[2] = DHCPMessageType_OFFER;
+							bSendDHCPMessage = true;
+
+							MessageCallback_Discover(pcsClientHostName, dwOfferAddr);
+
 							if (bSeenClientBefore) {
 							 	assert(0 == LocalFree(aiuiClientAddress.pbClientIdentifier));
 							}
