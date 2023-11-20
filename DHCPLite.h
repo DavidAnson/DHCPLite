@@ -1,5 +1,6 @@
 #pragma once
 #include <vector>
+#include <functional>
 #include <assert.h>
 #include <windows.h>
 
@@ -129,6 +130,20 @@ std::vector<IPAddrInfo> GetIPAddrInfoList();
 bool InitializeDHCPServer(SOCKET *const psServerSocket, const DWORD dwServerAddr, char *const pcsServerHostName, const size_t stServerHostNameLength);
 
 bool ReadDHCPClientRequests(const SOCKET sServerSocket, const char *const pcsServerHostName, VectorAddressInUseInformation *const pvAddressesInUse, const DWORD dwServerAddr, const DWORD dwMask, const DWORD dwMinAddr, const DWORD dwMaxAddr);
+
+typedef std::function<void (char *clientHostName, DWORD offerAddr)> MessageCallback;
+
+// Set Discover Message Callback
+// Callback Parameter: pcsClientHostName, dwOfferAddr
+void SetDiscoverCallback(MessageCallback callback);
+
+// Set Acknowledge Message Callback
+// Callback Parameter: pcsClientHostName, dwClientPreviousOfferAddr
+void SetACKCallback(MessageCallback callback);
+
+// Set Negative Acknowledgment Message Callback
+// Callback Parameter: pcsClientHostName, dwClientPreviousOfferAddr
+void SetNAKCallback(MessageCallback callback);
 
 bool Init(const DWORD dwServerAddr);
 

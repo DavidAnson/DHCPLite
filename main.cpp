@@ -74,6 +74,20 @@ void main(int /*argc*/, char ** /*argv*/) {
 			return;
 		}
 
+		SetDiscoverCallback([](char *clientHostName, DWORD offerAddr) {
+			printf("Offering client \"%hs\" IP address %d.%d.%d.%d\n", clientHostName,
+			DWIP0(offerAddr), DWIP1(offerAddr), DWIP2(offerAddr), DWIP3(offerAddr));
+		});
+
+		SetACKCallback([](char *clientHostName, DWORD offerAddr) {
+			printf("Acknowledging client \"%hs\" has IP address %d.%d.%d.%d\n", clientHostName,
+			DWIP0(offerAddr), DWIP1(offerAddr), DWIP2(offerAddr), DWIP3(offerAddr));
+		});
+
+		SetNAKCallback([](char *clientHostName, DWORD offerAddr) {
+			printf("Denying client \"%hs\" unoffered IP address.\n", clientHostName);
+		});
+
 		Init(config.addrInfo.address);
 		std::cout << "Server is running...  (Press Ctrl+C to shutdown.)\n";
 		Start(config);

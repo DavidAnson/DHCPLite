@@ -4,6 +4,10 @@
 #include <iphlpapi.h>
 #include <iprtrmib.h>
 
+MessageCallback MessageCallback_Discover;
+MessageCallback MessageCallback_ACK;
+MessageCallback MessageCallback_NAK;
+
 typedef bool(*FindIndexOfFilter)(const AddressInUseInformation &raiui, const void *const pvFilterData);
 int FindIndexOf(const VectorAddressInUseInformation *const pvAddressesInUse, const FindIndexOfFilter pFilter, const void *const pvFilterData) {
  	assert((0 != pvAddressesInUse) && (0 != pFilter) && (0 != pvFilterData));
@@ -284,8 +288,8 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char *const pcsS
 								pdhcpmReply->yiaddr = dwOfferAddr;
 								pdhcpsoServerOptions->pbMessageType[2] = DHCPMessageType_OFFER;
 								bSendDHCPMessage = true;
-								printf("Offering client \"%hs\" IP address %d.%d.%d.%d\n", pcsClientHostName,
-									DWIP0(dwOfferAddr),DWIP1(dwOfferAddr), DWIP2(dwOfferAddr), DWIP3(dwOfferAddr));
+
+								MessageCallback_Discover(pcsClientHostName, dwOfferAddr);
 							}
 							else {
 							 	assert(0 == LocalFree(aiuiClientAddress.pbClientIdentifier));
@@ -359,19 +363,16 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char *const pcsS
 						pdhcpmReply->ciaddr = dwClientPreviousOfferAddr;
 						pdhcpmReply->yiaddr = dwClientPreviousOfferAddr;
 						bSendDHCPMessage = true;
-						printf("Acknowledging client \"%hs\" has IP address %d.%d.%d.%d\n",
-							pcsClientHostName,
-							DWIP0(dwClientPreviousOfferAddr),
-							DWIP1(dwClientPreviousOfferAddr),
-							DWIP2(dwClientPreviousOfferAddr),
-							DWIP3(dwClientPreviousOfferAddr));
+
+						MessageCallback_ACK(pcsClientHostName, dwClientPreviousOfferAddr);
 						break;
 					case DHCPMessageType_NAK:
 						C_ASSERT(0 == option_PAD);
 						ZeroMemory(pdhcpsoServerOptions->pbLeaseTime, sizeof(pdhcpsoServerOptions->pbLeaseTime));
 						ZeroMemory(pdhcpsoServerOptions->pbSubnetMask, sizeof(pdhcpsoServerOptions->pbSubnetMask));
 						bSendDHCPMessage = true;
-						printf("Denying client \"%hs\" unoffered IP address.\n", pcsClientHostName);
+
+						MessageCallback_NAK(pcsClientHostName, dwClientPreviousOfferAddr);
 						break;
 					default:
 						// Nothing to do
@@ -494,6 +495,18 @@ SOCKET sServerSocket = INVALID_SOCKET;  // Global to allow ConsoleCtrlHandlerRou
 VectorAddressInUseInformation vAddressesInUse;
 AddressInUseInformation aiuiServerAddress{};
 char pcsServerHostName[MAX_HOSTNAME_LENGTH];
+
+void SetDiscoverCallback(MessageCallback callback) {
+	MessageCallback_Discover = callback;
+}
+
+void SetACKCallback(MessageCallback callback) {
+	MessageCallback_ACK = callback;
+}
+
+void SetNAKCallback(MessageCallback callback) {
+	MessageCallback_NAK = callback;
+}
 
 bool Init(const DWORD dwServerAddr) {
 	aiuiServerAddress.dwAddrValue = DWIPtoValue(dwServerAddr);
