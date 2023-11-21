@@ -18,69 +18,43 @@ int DHCPServer::FindIndexOf(const VectorAddressInUseInformation *const pvAddress
 	return -1;
 }
 
-DWORD DHCPServer::IPtoValue(DWORD ip) {
-	// Convert between big and small endian order
-	DWORD value = 0;
-	BYTE *valueBytes = (BYTE *)&value;
-	BYTE *ipBytes = (BYTE *)&ip;
 
-	for (size_t i = 0; i < 4; i++)
-		valueBytes[i] = ipBytes[3 - i];
+bool DHCPServer::FindOptionData(const BYTE bOption, const BYTE *const pbOptions, const int iOptionsSize, const BYTE **const ppbOptionData, unsigned int *const piOptionDataSize) {
+	assert(((0 == iOptionsSize) || (0 != pbOptions)) && (0 != ppbOptionData) && (0 != piOptionDataSize)
+		&& (option_PAD != bOption) && (option_END != bOption));
 
-	return value;
-}
+	bool bHitEND = false; // RFC 2132
+	const BYTE *pbCurrentOption = pbOptions;
+	while (((pbCurrentOption - pbOptions) < iOptionsSize) && !bHitEND) {
+		const BYTE bCurrentOption = *pbCurrentOption;
 
-DWORD DHCPServer::ValuetoIP(DWORD value) {
-	return IPtoValue(value);
-}
-
-std::string DHCPServer::IPAddrToString(DWORD address) {
-	BYTE *addrBytes = (BYTE *)&address;
-
-	std::string str = "";
-	for (size_t i = 0; i < 3; i++) {
-		str.append(std::to_string(addrBytes[i]) + ".");
+		switch (bCurrentOption) {
+		case option_PAD:
+			pbCurrentOption++;
+			break;
+		case option_END:
+			bHitEND = true;
+			break;
+		default:
+		{
+			pbCurrentOption++;
+			if ((pbCurrentOption - pbOptions) >= iOptionsSize) {
+				assert(!(TEXT("Invalid option data (not enough room for required length byte).")));
+				break;
+			}
+			const BYTE bCurrentOptionLen = *pbCurrentOption;
+			pbCurrentOption++;
+			if (bOption == bCurrentOption) {
+				*ppbOptionData = pbCurrentOption;
+				*piOptionDataSize = bCurrentOptionLen;
+				return true;
+			}
+			pbCurrentOption += bCurrentOptionLen;
+			break;
+		}
+		}
 	}
-	str.append(std::to_string(addrBytes[3]));
-
-	return str;
-}
-
-std::vector<DHCPServer::IPAddrInfo> DHCPServer::GetIPAddrInfoList() {
-	std::vector<IPAddrInfo> infoList;
-
-	MIB_IPADDRTABLE miatIpAddrTable;
-	ULONG ulIpAddrTableSize = sizeof(miatIpAddrTable);
-	DWORD dwGetIpAddrTableResult = GetIpAddrTable(&miatIpAddrTable, &ulIpAddrTableSize, FALSE);
-	// Technically, if NO_ERROR was returned, we don't need to allocate a buffer - but it's easier to do so anyway - and because we need more data than fits in the default buffer, this would only be wasteful in the error case
-	if ((NO_ERROR != dwGetIpAddrTableResult) && (ERROR_INSUFFICIENT_BUFFER != dwGetIpAddrTableResult)) {
-		throw GetIPAddrException("Unable to query IP address table.");
-		return infoList;
-	}
-
-	const ULONG ulIpAddrTableSizeAllocated = ulIpAddrTableSize;
-	BYTE *const pbIpAddrTableBuffer = (BYTE *)LocalAlloc(LMEM_FIXED, ulIpAddrTableSizeAllocated);
-	if (nullptr == pbIpAddrTableBuffer) {
-		throw GetIPAddrException("Insufficient memory for IP address table.");
-		LocalFree(pbIpAddrTableBuffer);
-		return infoList;
-	}
-
-	dwGetIpAddrTableResult = GetIpAddrTable((MIB_IPADDRTABLE *)pbIpAddrTableBuffer, &ulIpAddrTableSize, FALSE);
-	if ((NO_ERROR != dwGetIpAddrTableResult) || (ulIpAddrTableSizeAllocated > ulIpAddrTableSize)) {
-		throw GetIPAddrException("Unable to query IP address table.");
-		LocalFree(pbIpAddrTableBuffer);
-		return infoList;
-	}
-
-	const MIB_IPADDRTABLE *const pmiatIpAddrTable = (MIB_IPADDRTABLE *)pbIpAddrTableBuffer;
-
-	for (size_t i = 0; i < pmiatIpAddrTable->dwNumEntries; i++) {
-		infoList.push_back(IPAddrInfo{ pmiatIpAddrTable->table[i].dwAddr, pmiatIpAddrTable->table[i].dwMask });
-	}
-
-	LocalFree(pbIpAddrTableBuffer);
-	return infoList;
+	return false;
 }
 
 bool DHCPServer::InitializeDHCPServer(SOCKET *const psServerSocket, const DWORD dwServerAddr, char *const pcsServerHostName, const size_t stServerHostNameLength) {
@@ -116,44 +90,6 @@ bool DHCPServer::InitializeDHCPServer(SOCKET *const psServerSocket, const DWORD 
 		throw SocketException("Unable to set socket options.");
 	}
 
-	return false;
-}
-
-bool DHCPServer::FindOptionData(const BYTE bOption, const BYTE *const pbOptions, const int iOptionsSize, const BYTE **const ppbOptionData, unsigned int *const piOptionDataSize) {
- 	assert(((0 == iOptionsSize) || (0 != pbOptions)) && (0 != ppbOptionData) && (0 != piOptionDataSize)
-		&& (option_PAD != bOption) && (option_END != bOption));
-	
-	bool bHitEND = false; // RFC 2132
-	const BYTE *pbCurrentOption = pbOptions;
-	while (((pbCurrentOption - pbOptions) < iOptionsSize) && !bHitEND) {
-		const BYTE bCurrentOption = *pbCurrentOption;
-
-		switch (bCurrentOption) {
-		case option_PAD:
-			pbCurrentOption++;
-			break;
-		case option_END:
-			bHitEND = true;
-			break;
-		default:
-		{
-			pbCurrentOption++;
-			if ((pbCurrentOption - pbOptions) >= iOptionsSize) {
-				assert(!(TEXT("Invalid option data (not enough room for required length byte).")));
-				break;
-			}
-			const BYTE bCurrentOptionLen = *pbCurrentOption;
-			pbCurrentOption++;
-			if (bOption == bCurrentOption) {
-				*ppbOptionData = pbCurrentOption;
-				*piOptionDataSize = bCurrentOptionLen;
-				return true;
-			}
-			pbCurrentOption += bCurrentOptionLen;
-			break;
-		}
-		}
-	}
 	return false;
 }
 
@@ -510,6 +446,72 @@ bool DHCPServer::ReadDHCPClientRequests(const SOCKET sServerSocket, const char *
 	return true;
 }
 
+
+DWORD DHCPServer::IPtoValue(DWORD ip) {
+	// Convert between big and small endian order
+	DWORD value = 0;
+	BYTE *valueBytes = (BYTE *)&value;
+	BYTE *ipBytes = (BYTE *)&ip;
+
+	for (size_t i = 0; i < 4; i++)
+		valueBytes[i] = ipBytes[3 - i];
+
+	return value;
+}
+
+DWORD DHCPServer::ValuetoIP(DWORD value) {
+	return IPtoValue(value);
+}
+
+std::string DHCPServer::IPAddrToString(DWORD address) {
+	BYTE *addrBytes = (BYTE *)&address;
+
+	std::string str = "";
+	for (size_t i = 0; i < 3; i++) {
+		str.append(std::to_string(addrBytes[i]) + ".");
+	}
+	str.append(std::to_string(addrBytes[3]));
+
+	return str;
+}
+
+std::vector<DHCPServer::IPAddrInfo> DHCPServer::GetIPAddrInfoList() {
+	std::vector<IPAddrInfo> infoList;
+
+	MIB_IPADDRTABLE miatIpAddrTable;
+	ULONG ulIpAddrTableSize = sizeof(miatIpAddrTable);
+	DWORD dwGetIpAddrTableResult = GetIpAddrTable(&miatIpAddrTable, &ulIpAddrTableSize, FALSE);
+	// Technically, if NO_ERROR was returned, we don't need to allocate a buffer - but it's easier to do so anyway - and because we need more data than fits in the default buffer, this would only be wasteful in the error case
+	if ((NO_ERROR != dwGetIpAddrTableResult) && (ERROR_INSUFFICIENT_BUFFER != dwGetIpAddrTableResult)) {
+		throw GetIPAddrException("Unable to query IP address table.");
+		return infoList;
+	}
+
+	const ULONG ulIpAddrTableSizeAllocated = ulIpAddrTableSize;
+	BYTE *const pbIpAddrTableBuffer = (BYTE *)LocalAlloc(LMEM_FIXED, ulIpAddrTableSizeAllocated);
+	if (nullptr == pbIpAddrTableBuffer) {
+		throw GetIPAddrException("Insufficient memory for IP address table.");
+		LocalFree(pbIpAddrTableBuffer);
+		return infoList;
+	}
+
+	dwGetIpAddrTableResult = GetIpAddrTable((MIB_IPADDRTABLE *)pbIpAddrTableBuffer, &ulIpAddrTableSize, FALSE);
+	if ((NO_ERROR != dwGetIpAddrTableResult) || (ulIpAddrTableSizeAllocated > ulIpAddrTableSize)) {
+		throw GetIPAddrException("Unable to query IP address table.");
+		LocalFree(pbIpAddrTableBuffer);
+		return infoList;
+	}
+
+	const MIB_IPADDRTABLE *const pmiatIpAddrTable = (MIB_IPADDRTABLE *)pbIpAddrTableBuffer;
+
+	for (size_t i = 0; i < pmiatIpAddrTable->dwNumEntries; i++) {
+		infoList.push_back(IPAddrInfo{ pmiatIpAddrTable->table[i].dwAddr, pmiatIpAddrTable->table[i].dwMask });
+	}
+
+	LocalFree(pbIpAddrTableBuffer);
+	return infoList;
+}
+
 void DHCPServer::SetDiscoverCallback(MessageCallback callback) {
 	MessageCallback_Discover = callback;
 }
@@ -522,7 +524,7 @@ void DHCPServer::SetNAKCallback(MessageCallback callback) {
 	MessageCallback_NAK = callback;
 }
 
-bool DHCPServer::Init(const DWORD dwServerAddr) {
+bool DHCPServer::Init(DWORD dwServerAddr) {
 	aiuiServerAddress.dwAddrValue = IPtoValue(dwServerAddr);
 	aiuiServerAddress.pbClientIdentifier = 0; // Server entry is only entry without a client ID
 	aiuiServerAddress.dwClientIdentifierSize = 0;

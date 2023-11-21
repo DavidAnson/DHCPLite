@@ -1,4 +1,5 @@
 #pragma once
+
 #include <vector>
 #include <string>
 #include <functional>
@@ -9,22 +10,20 @@ namespace DHCPLite {
 	constexpr auto MAX_UDP_MESSAGE_SIZE = 65536 - 8;
 	// DHCP constants (see RFC 2131 section 4.1)
 	constexpr auto DHCP_SERVER_PORT = 67;
+	// DHCP constants (see RFC 2131 section 4.1)
 	constexpr auto DHCP_CLIENT_PORT = 68;
 	// Broadcast bit for flags field (RFC 2131 section 2)
 	constexpr auto BROADCAST_FLAG = 0x80;
 	// For display of host name information
 	constexpr auto MAX_HOSTNAME_LENGTH = 256;
 
-
 	class DHCPServer {
 	private:
-		// RFC 2131 section 2
-		enum op_values {
+		enum op_values { // RFC 2131 section 2
 			op_BOOTREQUEST = 1,
 			op_BOOTREPLY = 2,
 		};
-		// RFC 2132 section 9.6
-		enum option_values {
+		enum option_values { // RFC 2132 section 9.6
 			option_PAD = 0,
 			option_SUBNETMASK = 1,
 			option_HOSTNAME = 12,
@@ -50,26 +49,25 @@ namespace DHCPLite {
 			DWORD dwClientIdentifierSize;
 		};
 
-		// RFC 2131 section 2
 #pragma warning(push)
 #pragma warning(disable : 4200)
 #pragma pack(push, 1)
-		struct DHCPMessage {
-			BYTE op;
-			BYTE htype;
-			BYTE hlen;
-			BYTE hops;
-			DWORD xid;
-			WORD secs;
-			WORD flags;
-			DWORD ciaddr;
-			DWORD yiaddr;
-			DWORD siaddr;
-			DWORD giaddr;
-			BYTE chaddr[16];
-			BYTE sname[64];
-			BYTE file[128];
-			BYTE options[];
+		struct DHCPMessage {		// RFC 2131 section 2
+			BYTE op;				// 0: Message opcode/type
+			BYTE htype;			  	// 1: Hardware addr type (net/if_types.h)
+			BYTE hlen;			  	// 2: Hardware addr length
+			BYTE hops;			  	// 3: Number of relay agent hops from client
+			DWORD xid;			  	// 4: Transaction ID
+			WORD secs;			  	// 8: Seconds since client started looking
+			WORD flags;			  	// 10: Flag bits
+			DWORD ciaddr;		  	// 12: Client IP address (if already in use)
+			DWORD yiaddr;		  	// 16: Client IP address
+			DWORD siaddr;		  	// 18: IP address of next server to talk to
+			DWORD giaddr;		  	// 20: DHCP relay agent IP address
+			BYTE chaddr[16];	  	// 24: Client hardware address
+			BYTE sname[64];		  	// 40: Server name
+			BYTE file[128];		  	// 104: Boot filename
+			BYTE options[];			// 212: Optional parameters
 		};
 		struct DHCPServerOptions {
 			BYTE pbMagicCookie[4];
@@ -86,7 +84,7 @@ namespace DHCPLite {
 			DWORD dwAddrValue;
 			BYTE *pbClientIdentifier;
 			DWORD dwClientIdentifierSize;
-			// SYSTEMTIME stExpireTime;  // If lease timeouts are needed
+			// SYSTEMTIME stExpireTime; // If lease timeouts are needed
 		};
 		typedef std::vector<AddressInUseInformation> VectorAddressInUseInformation;
 
@@ -98,19 +96,17 @@ namespace DHCPLite {
 		AddressInUseInformation aiuiServerAddress{};
 		char pcsServerHostName[MAX_HOSTNAME_LENGTH];
 
-		FindIndexOfFilter AddressInUseInformationAddrValueFilter, AddressInUseInformationClientIdentifierFilter;
-
 		int FindIndexOf(const VectorAddressInUseInformation *const pvAddressesInUse, FindIndexOfFilter pFilter, const void *const pvFilterData);
 
 		bool FindOptionData(const BYTE bOption, const BYTE *const pbOptions, const int iOptionsSize, const BYTE **const ppbOptionData, unsigned int *const piOptionDataSize);
+
+		bool InitializeDHCPServer(SOCKET *const psServerSocket, const DWORD dwServerAddr, char *const pcsServerHostName, const size_t stServerHostNameLength);
 
 		bool GetDHCPMessageType(const BYTE *const pbOptions, const int iOptionsSize, DHCPMessageTypes *const pdhcpmtMessageType);
 
 		void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char *const pcsServerHostName, const BYTE *const pbData, const int iDataSize, VectorAddressInUseInformation *const pvAddressesInUse, const DWORD dwServerAddr, const DWORD dwMask, const DWORD dwMinAddr, const DWORD dwMaxAddr);
 
 		bool ReadDHCPClientRequests(const SOCKET sServerSocket, const char *const pcsServerHostName, VectorAddressInUseInformation *const pvAddressesInUse, const DWORD dwServerAddr, const DWORD dwMask, const DWORD dwMinAddr, const DWORD dwMaxAddr);
-
-		bool InitializeDHCPServer(SOCKET *const psServerSocket, const DWORD dwServerAddr, char *const pcsServerHostName, const size_t stServerHostNameLength);
 
 	public:
 		struct IPAddrInfo {
@@ -151,7 +147,7 @@ namespace DHCPLite {
 		// Callback Parameter: pcsClientHostName, dwClientPreviousOfferAddr
 		void SetNAKCallback(MessageCallback callback);
 
-		bool Init(const DWORD dwServerAddr);
+		bool Init(DWORD dwServerAddr);
 
 		void Start(DHCPConfig config);
 

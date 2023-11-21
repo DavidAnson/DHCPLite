@@ -4,18 +4,6 @@
 
 using namespace DHCPLite;
 
-std::unique_ptr<DHCPServer> server;
-
-BOOL WINAPI ConsoleCtrlHandlerRoutine(DWORD dwCtrlType) {
-	if ((CTRL_C_EVENT == dwCtrlType) || (CTRL_BREAK_EVENT == dwCtrlType)) {
-		server->Close();
-		std::cout << "Stopping server request handler.\n";
-
-		return TRUE;
-	}
-	return FALSE;
-}
-
 DHCPServer::DHCPConfig GetIPAddrInfo() {
 	auto addrInfoList = DHCPServer::GetIPAddrInfoList();
 	if (2 != addrInfoList.size()) {
@@ -60,6 +48,18 @@ DHCPServer::DHCPConfig GetIPAddrInfo() {
 	return DHCPServer::DHCPConfig{ dwAddr, dwMask, dwMinAddr, dwMaxAddr };
 }
 
+std::unique_ptr<DHCPServer> server;
+
+BOOL WINAPI ConsoleCtrlHandlerRoutine(DWORD dwCtrlType) {
+	if ((CTRL_C_EVENT == dwCtrlType) || (CTRL_BREAK_EVENT == dwCtrlType)) {
+		server->Close();
+		std::cout << "Stopping server request handler.\n";
+
+		return TRUE;
+	}
+	return FALSE;
+}
+
 int main(int /*argc*/, char ** /*argv*/) {
 	std::cout << "DHCPLite\n2016-04-02\n";
 	std::cout << "Copyright (c) 2001-2016 by David Anson (http://dlaa.me/)\n\n";
@@ -81,11 +81,13 @@ int main(int /*argc*/, char ** /*argv*/) {
 		}
 
 		server->SetDiscoverCallback([](char *clientHostName, DWORD offerAddr) {
-			std::cout << "Offering client \"" << clientHostName << "\" IP address " << DHCPServer::IPAddrToString(offerAddr) << "\n";
+			std::cout << "Offering client \"" << clientHostName << "\" "
+				<< "IP address " << DHCPServer::IPAddrToString(offerAddr) << "\n";
 		});
 
 		server->SetACKCallback([](char *clientHostName, DWORD offerAddr) {
-			std::cout << "Acknowledging client \"" << clientHostName << "\" has IP address " << DHCPServer::IPAddrToString(offerAddr) << "\n";
+			std::cout << "Acknowledging client \"" << clientHostName << "\" "
+				<< "has IP address " << DHCPServer::IPAddrToString(offerAddr) << "\n";
 		});
 
 		server->SetNAKCallback([](char *clientHostName, DWORD offerAddr) {
@@ -96,7 +98,7 @@ int main(int /*argc*/, char ** /*argv*/) {
 		std::cout << "Server is running...  (Press Ctrl+C to shutdown.)\n";
 		server->Start(config);
 	}
-	catch (GetIPAddrException e) {
+	catch (DHCPException e) {
 		std::cout << "[Error] " << e.what() << "\n";
 	}
 
