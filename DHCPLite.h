@@ -19,34 +19,30 @@ namespace DHCPLite {
 
 	class DHCPServer {
 	private:
-		enum op_values { // RFC 2131 section 2
-			op_BOOTREQUEST = 1,
-			op_BOOTREPLY = 2,
+		enum MessageOpValues { // RFC 2131 section 2
+			MsgOp_BOOTREQUEST = 1,
+			MsgOp_BOOTREPLY = 2,
 		};
-		enum option_values { // RFC 2132 section 9.6
-			option_PAD = 0,
-			option_SUBNETMASK = 1,
-			option_HOSTNAME = 12,
-			option_REQUESTEDIPADDRESS = 50,
-			option_IPADDRESSLEASETIME = 51,
-			option_DHCPMESSAGETYPE = 53,
-			option_SERVERIDENTIFIER = 54,
-			option_CLIENTIDENTIFIER = 61,
-			option_END = 255,
+		enum MessageOptionValues { // RFC 2132 section 9.6
+			MsgOption_PAD = 0,
+			MsgOption_SUBNETMASK = 1,
+			MsgOption_HOSTNAME = 12,
+			MsgOption_REQUESTEDIPADDRESS = 50,
+			MsgOption_IPADDRESSLEASETIME = 51,
+			MsgOption_DHCPMESSAGETYPE = 53,
+			MsgOption_SERVERIDENTIFIER = 54,
+			MsgOption_CLIENTIDENTIFIER = 61,
+			MsgOption_END = 255,
 		};
-		enum DHCPMessageTypes {
-			DHCPMessageType_DISCOVER = 1,
-			DHCPMessageType_OFFER = 2,
-			DHCPMessageType_REQUEST = 3,
-			DHCPMessageType_DECLINE = 4,
-			DHCPMessageType_ACK = 5,
-			DHCPMessageType_NAK = 6,
-			DHCPMessageType_RELEASE = 7,
-			DHCPMessageType_INFORM = 8,
-		};
-		struct ClientIdentifierData {
-			const BYTE *pbClientIdentifier;
-			DWORD dwClientIdentifierSize;
+		enum MessageTypes {
+			MsgType_DISCOVER = 1,
+			MsgType_OFFER = 2,
+			MsgType_REQUEST = 3,
+			MsgType_DECLINE = 4,
+			MsgType_ACK = 5,
+			MsgType_NAK = 6,
+			MsgType_RELEASE = 7,
+			MsgType_INFORM = 8,
 		};
 
 #pragma warning(push)
@@ -88,17 +84,15 @@ namespace DHCPLite {
 		};
 		typedef std::vector<AddressInUseInformation> VectorAddressInUseInformation;
 
-		typedef std::function<bool(const AddressInUseInformation &raiui, const void *const pvFilterData)> FindIndexOfFilter;
+		typedef std::function<bool(const AddressInUseInformation &raiui)> FindIndexOfFilter;
 
 	private:
 		SOCKET sServerSocket = INVALID_SOCKET; // Global to allow ConsoleCtrlHandlerRoutine access to it
 		VectorAddressInUseInformation vAddressesInUse;
-		AddressInUseInformation aiuiServerAddress{};
 		char pcsServerHostName[MAX_HOSTNAME_LENGTH]{};
 		std::string serverName = "DHCPLite DHCP Server";
 
-		int FindIndexOf(const VectorAddressInUseInformation *const pvAddressesInUse,
-			FindIndexOfFilter pFilter, const void *const pvFilterData);
+		int FindIndexOf(const VectorAddressInUseInformation *const pvAddressesInUse, FindIndexOfFilter pFilter);
 
 		bool FindOptionData(const BYTE bOption, const BYTE *const pbOptions, const int iOptionsSize,
 			const BYTE **const ppbOptionData, unsigned int *const piOptionDataSize);
@@ -106,7 +100,7 @@ namespace DHCPLite {
 		bool InitializeDHCPServer();
 
 		bool GetDHCPMessageType(const BYTE *const pbOptions, const int iOptionsSize,
-			DHCPMessageTypes *const pdhcpmtMessageType);
+			MessageTypes *const pdhcpmtMessageType);
 
 		void ProcessDHCPClientRequest(const BYTE *const pbData, const int iDataSize);
 

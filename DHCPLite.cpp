@@ -7,21 +7,20 @@
 
 using namespace DHCPLite;
 
-int DHCPServer::FindIndexOf(const VectorAddressInUseInformation *const pvAddressesInUse, FindIndexOfFilter pFilter, const void *const pvFilterData) {
- 	assert((0 != pvAddressesInUse) && (0 != pFilter) && (0 != pvFilterData));
+int DHCPServer::FindIndexOf(const VectorAddressInUseInformation *const pvAddressesInUse, FindIndexOfFilter pFilter) {
+ 	assert((0 != pvAddressesInUse) && (0 != pFilter));
 
 	for (size_t i = 0; i < pvAddressesInUse->size(); i++) {
-		if (pFilter(pvAddressesInUse->at(i), pvFilterData)) {
+		if (pFilter(pvAddressesInUse->at(i))) {
 			return (int)i;
 		}
 	}
 	return -1;
 }
 
-
 bool DHCPServer::FindOptionData(const BYTE bOption, const BYTE *const pbOptions, const int iOptionsSize, const BYTE **const ppbOptionData, unsigned int *const piOptionDataSize) {
 	assert(((0 == iOptionsSize) || (0 != pbOptions)) && (0 != ppbOptionData) && (0 != piOptionDataSize)
-		&& (option_PAD != bOption) && (option_END != bOption));
+		&& (MsgOption_PAD != bOption) && (MsgOption_END != bOption));
 
 	bool bHitEND = false; // RFC 2132
 	const BYTE *pbCurrentOption = pbOptions;
@@ -29,10 +28,10 @@ bool DHCPServer::FindOptionData(const BYTE bOption, const BYTE *const pbOptions,
 		const BYTE bCurrentOption = *pbCurrentOption;
 
 		switch (bCurrentOption) {
-		case option_PAD:
+		case MsgOption_PAD:
 			pbCurrentOption++;
 			break;
-		case option_END:
+		case MsgOption_END:
 			bHitEND = true;
 			break;
 		default:
@@ -86,14 +85,14 @@ bool DHCPServer::InitializeDHCPServer() {
 	return true;
 }
 
-bool DHCPServer::GetDHCPMessageType(const BYTE *const pbOptions, const int iOptionsSize, DHCPMessageTypes *const pdhcpmtMessageType) {
+bool DHCPServer::GetDHCPMessageType(const BYTE *const pbOptions, const int iOptionsSize, MessageTypes *const pdhcpmtMessageType) {
  	assert(((0 == iOptionsSize) || (0 != pbOptions)) && (0 != pdhcpmtMessageType));
 
 	const BYTE *pbDHCPMessageTypeData;
 	unsigned int iDHCPMessageTypeDataSize;
-	if (FindOptionData(option_DHCPMESSAGETYPE, pbOptions, iOptionsSize, &pbDHCPMessageTypeData, &iDHCPMessageTypeDataSize)
+	if (FindOptionData(MsgOption_DHCPMESSAGETYPE, pbOptions, iOptionsSize, &pbDHCPMessageTypeData, &iDHCPMessageTypeDataSize)
 		&& (1 == iDHCPMessageTypeDataSize) && (1 <= *pbDHCPMessageTypeData) && (*pbDHCPMessageTypeData <= 8)) {
-		*pdhcpmtMessageType = (DHCPMessageTypes)(*pbDHCPMessageTypeData);
+		*pdhcpmtMessageType = (MessageTypes)(*pbDHCPMessageTypeData);
 		return true;
 	}
 	return false;
@@ -104,20 +103,20 @@ void DHCPServer::ProcessDHCPClientRequest(const BYTE *const pbData, const int iD
 
 	const DHCPMessage *const pdhcpmRequest = (DHCPMessage *)pbData;
 	if ((((sizeof(*pdhcpmRequest) + sizeof(pbDHCPMagicCookie)) <= iDataSize) &&  // Take into account mandatory DHCP magic cookie values in options array (RFC 2131 section 3)
-		(op_BOOTREQUEST == pdhcpmRequest->op) &&
+		(MsgOp_BOOTREQUEST == pdhcpmRequest->op) &&
 		// (pdhcpmRequest->htype) && // Could also validate htype
 		(0 == memcmp(pbDHCPMagicCookie, pdhcpmRequest->options, sizeof(pbDHCPMagicCookie))))
 		) {
 		const BYTE *const pbOptions = pdhcpmRequest->options + sizeof(pbDHCPMagicCookie);
 		const int iOptionsSize = iDataSize - (int)sizeof(*pdhcpmRequest) - (int)sizeof(pbDHCPMagicCookie);
-		DHCPMessageTypes dhcpmtMessageType;
+		MessageTypes dhcpmtMessageType;
 		if (GetDHCPMessageType(pbOptions, iOptionsSize, &dhcpmtMessageType)) {
 			// Determine client host name
 			char pcsClientHostName[MAX_HOSTNAME_LENGTH]{};
 			pcsClientHostName[0] = '\0';
 			const BYTE *pbRequestHostNameData;
 			unsigned int iRequestHostNameDataSize;
-			if (FindOptionData(option_HOSTNAME, pbOptions, iOptionsSize, &pbRequestHostNameData, &iRequestHostNameDataSize)) {
+			if (FindOptionData(MsgOption_HOSTNAME, pbOptions, iOptionsSize, &pbRequestHostNameData, &iRequestHostNameDataSize)) {
 				const size_t stHostNameCopySize = min(iRequestHostNameDataSize + 1, sizeof(pcsClientHostName));
 				_tcsncpy_s(pcsClientHostName, stHostNameCopySize, (char *)pbRequestHostNameData, _TRUNCATE);
 			}
@@ -125,21 +124,18 @@ void DHCPServer::ProcessDHCPClientRequest(const BYTE *const pbData, const int iD
 				// Determine client identifier in proper RFC 2131 order (client identifier option then chaddr)
 				const BYTE *pbRequestClientIdentifierData;
 				unsigned int iRequestClientIdentifierDataSize;
-				if (!FindOptionData(option_CLIENTIDENTIFIER, pbOptions, iOptionsSize, &pbRequestClientIdentifierData, &iRequestClientIdentifierDataSize)) {
+				if (!FindOptionData(MsgOption_CLIENTIDENTIFIER, pbOptions, iOptionsSize, &pbRequestClientIdentifierData, &iRequestClientIdentifierDataSize)) {
 					pbRequestClientIdentifierData = pdhcpmRequest->chaddr;
 					iRequestClientIdentifierDataSize = sizeof(pdhcpmRequest->chaddr);
 				}
 				// Determine if we've seen this client before
 				bool bSeenClientBefore = false;
 				DWORD dwClientPreviousOfferAddr = (DWORD)INADDR_BROADCAST;  // Invalid IP address for later comparison
-				const ClientIdentifierData cid = { pbRequestClientIdentifierData, (DWORD)iRequestClientIdentifierDataSize };
-				const int iIndex = FindIndexOf(&vAddressesInUse, [](const AddressInUseInformation &raiui, const void *const pvFilterData) {
-					const ClientIdentifierData *const pcid = (ClientIdentifierData *)pvFilterData;
-					assert(0 != pcid);
-
-					return (0 != raiui.dwClientIdentifierSize) && (pcid->dwClientIdentifierSize == raiui.dwClientIdentifierSize)
-						&& (0 == memcmp(pcid->pbClientIdentifier, raiui.pbClientIdentifier, pcid->dwClientIdentifierSize));
-				}, &cid);
+				auto cid = std::make_tuple(pbRequestClientIdentifierData, (DWORD)iRequestClientIdentifierDataSize);
+				const int iIndex = FindIndexOf(&vAddressesInUse, [=](const AddressInUseInformation &raiui) {
+					return (0 != raiui.dwClientIdentifierSize) && (iRequestClientIdentifierDataSize == raiui.dwClientIdentifierSize)
+						&& (0 == memcmp(pbRequestClientIdentifierData, raiui.pbClientIdentifier, iRequestClientIdentifierDataSize));
+				});
 				if (-1 != iIndex) {
 					const AddressInUseInformation aiui = vAddressesInUse.at((size_t)iIndex);
 					dwClientPreviousOfferAddr = ValuetoIP(aiui.dwAddrValue);
@@ -150,7 +146,7 @@ void DHCPServer::ProcessDHCPClientRequest(const BYTE *const pbData, const int iD
 				BYTE bDHCPMessageBuffer[sizeof(DHCPMessage) + sizeof(DHCPServerOptions)];
 				ZeroMemory(bDHCPMessageBuffer, sizeof(bDHCPMessageBuffer));
 				DHCPMessage *const pdhcpmReply = (DHCPMessage *)&bDHCPMessageBuffer;
-				pdhcpmReply->op = op_BOOTREPLY;
+				pdhcpmReply->op = MsgOp_BOOTREPLY;
 				pdhcpmReply->htype = pdhcpmRequest->htype;
 				pdhcpmReply->hlen = pdhcpmRequest->hlen;
 				// pdhcpmReply->hops = 0;
@@ -167,28 +163,28 @@ void DHCPServer::ProcessDHCPClientRequest(const BYTE *const pbData, const int iD
 				DHCPServerOptions *const pdhcpsoServerOptions = (DHCPServerOptions *)(pdhcpmReply->options);
 				CopyMemory(pdhcpsoServerOptions->pbMagicCookie, pbDHCPMagicCookie, sizeof(pdhcpsoServerOptions->pbMagicCookie));
 				// DHCP Message Type - RFC 2132 section 9.6
-				pdhcpsoServerOptions->pbMessageType[0] = option_DHCPMESSAGETYPE;
+				pdhcpsoServerOptions->pbMessageType[0] = MsgOption_DHCPMESSAGETYPE;
 				pdhcpsoServerOptions->pbMessageType[1] = 1;
 				// pdhcpsoServerOptions->pbMessageType[2] set below
 				// IP Address Lease Time - RFC 2132 section 9.2
-				pdhcpsoServerOptions->pbLeaseTime[0] = option_IPADDRESSLEASETIME;
+				pdhcpsoServerOptions->pbLeaseTime[0] = MsgOption_IPADDRESSLEASETIME;
 				pdhcpsoServerOptions->pbLeaseTime[1] = 4;
 				C_ASSERT(sizeof(u_long) == 4);
 				*((u_long *)(&(pdhcpsoServerOptions->pbLeaseTime[2]))) = htonl(1 * 60 * 60);  // One hour
 				// Subnet Mask - RFC 2132 section 3.3
-				pdhcpsoServerOptions->pbSubnetMask[0] = option_SUBNETMASK;
+				pdhcpsoServerOptions->pbSubnetMask[0] = MsgOption_SUBNETMASK;
 				pdhcpsoServerOptions->pbSubnetMask[1] = 4;
 				C_ASSERT(sizeof(u_long) == 4);
 				*((u_long *)(&(pdhcpsoServerOptions->pbSubnetMask[2]))) = config.addrInfo.mask;  // Already in network order
 				// Server Identifier - RFC 2132 section 9.7
-				pdhcpsoServerOptions->pbServerID[0] = option_SERVERIDENTIFIER;
+				pdhcpsoServerOptions->pbServerID[0] = MsgOption_SERVERIDENTIFIER;
 				pdhcpsoServerOptions->pbServerID[1] = 4;
 				C_ASSERT(sizeof(u_long) == 4);
 				*((u_long *)(&(pdhcpsoServerOptions->pbServerID[2]))) = config.addrInfo.address;  // Already in network order
-				pdhcpsoServerOptions->bEND = option_END;
+				pdhcpsoServerOptions->bEND = MsgOption_END;
 				bool bSendDHCPMessage = false;
 				switch (dhcpmtMessageType) {
-				case DHCPMessageType_DISCOVER:
+				case MsgType_DISCOVER:
 				{
 					// RFC 2131 section 4.3.1
 					// UNSUPPORTED: Requested IP Address option
@@ -213,10 +209,9 @@ void DHCPServer::ProcessDHCPClientRequest(const BYTE *const pbData, const int iD
 						 	assert(dwMaxAddrValue + 1 == dwOfferAddrValue);
 							dwOfferAddrValue = dwMinAddrValue;
 						}
-						bOfferAddrValueValid = (-1 == FindIndexOf(&vAddressesInUse, [](const AddressInUseInformation &raiui, const void *const pvFilterData) {
-							const DWORD *const pdwAddrValue = (DWORD *)pvFilterData;
-							return (*pdwAddrValue == raiui.dwAddrValue);
-						}, &dwOfferAddrValue));
+						bOfferAddrValueValid = (-1 == FindIndexOf(&vAddressesInUse, [=](const AddressInUseInformation &raiui) {
+							return dwOfferAddrValue == raiui.dwAddrValue;
+						}));
 						bOfferedInitialValue = true;
 						if (!bOfferAddrValueValid) {
 							dwOfferAddrValue++;
@@ -235,7 +230,7 @@ void DHCPServer::ProcessDHCPClientRequest(const BYTE *const pbData, const int iD
 
 							vAddressesInUse.push_back(aiuiClientAddress);
 							pdhcpmReply->yiaddr = dwOfferAddr;
-							pdhcpsoServerOptions->pbMessageType[2] = DHCPMessageType_OFFER;
+							pdhcpsoServerOptions->pbMessageType[2] = MsgType_OFFER;
 							bSendDHCPMessage = true;
 
 							MessageCallback_Discover(pcsClientHostName, dwOfferAddr);
@@ -254,32 +249,32 @@ void DHCPServer::ProcessDHCPClientRequest(const BYTE *const pbData, const int iD
 					}
 				}
 				break;
-				case DHCPMessageType_REQUEST:
+				case MsgType_REQUEST:
 				{
 					// RFC 2131 section 4.3.2
 					// Determine requested IP address
 					DWORD dwRequestedIPAddress = INADDR_BROADCAST;  // Invalid IP address for later comparison
 					const BYTE *pbRequestRequestedIPAddressData = 0;
 					unsigned int iRequestRequestedIPAddressDataSize = 0;
-					if (FindOptionData(option_REQUESTEDIPADDRESS, pbOptions, iOptionsSize, &pbRequestRequestedIPAddressData, &iRequestRequestedIPAddressDataSize) && (sizeof(dwRequestedIPAddress) == iRequestRequestedIPAddressDataSize)) {
+					if (FindOptionData(MsgOption_REQUESTEDIPADDRESS, pbOptions, iOptionsSize, &pbRequestRequestedIPAddressData, &iRequestRequestedIPAddressDataSize) && (sizeof(dwRequestedIPAddress) == iRequestRequestedIPAddressDataSize)) {
 						dwRequestedIPAddress = *((DWORD *)pbRequestRequestedIPAddressData);
 					}
 					// Determine server identifier
 					const BYTE *pbRequestServerIdentifierData = 0;
 					unsigned int iRequestServerIdentifierDataSize = 0;
-					if (FindOptionData(option_SERVERIDENTIFIER, pbOptions, iOptionsSize, &pbRequestServerIdentifierData, &iRequestServerIdentifierDataSize) &&
+					if (FindOptionData(MsgOption_SERVERIDENTIFIER, pbOptions, iOptionsSize, &pbRequestServerIdentifierData, &iRequestServerIdentifierDataSize) &&
 						(sizeof(config.addrInfo.address) == iRequestServerIdentifierDataSize) && (config.addrInfo.address == *((DWORD *)pbRequestServerIdentifierData))) {
 						// Response to OFFER
 						// DHCPREQUEST generated during SELECTING state
 					 	assert(0 == pdhcpmRequest->ciaddr);
 						if (bSeenClientBefore) {
 							// Already have an IP address for this client - ACK it
-							pdhcpsoServerOptions->pbMessageType[2] = DHCPMessageType_ACK;
+							pdhcpsoServerOptions->pbMessageType[2] = MsgType_ACK;
 							// Will set other options below
 						}
 						else {
 							// Haven't seen this client before - NAK it
-							pdhcpsoServerOptions->pbMessageType[2] = DHCPMessageType_NAK;
+							pdhcpsoServerOptions->pbMessageType[2] = MsgType_NAK;
 							// Will clear invalid options and prepare to send message below
 						}
 					}
@@ -290,12 +285,12 @@ void DHCPServer::ProcessDHCPClientRequest(const BYTE *const pbData, const int iD
 						{
 							if (bSeenClientBefore && ((dwClientPreviousOfferAddr == dwRequestedIPAddress) || (dwClientPreviousOfferAddr == pdhcpmRequest->ciaddr))) {
 								// Already have an IP address for this client - ACK it
-								pdhcpsoServerOptions->pbMessageType[2] = DHCPMessageType_ACK;
+								pdhcpsoServerOptions->pbMessageType[2] = MsgType_ACK;
 								// Will set other options below
 							}
 							else {
 								// Haven't seen this client before or requested IP address is invalid
-								pdhcpsoServerOptions->pbMessageType[2] = DHCPMessageType_NAK;
+								pdhcpsoServerOptions->pbMessageType[2] = MsgType_NAK;
 								// Will clear invalid options and prepare to send message below
 							}
 						}
@@ -304,7 +299,7 @@ void DHCPServer::ProcessDHCPClientRequest(const BYTE *const pbData, const int iD
 						}
 					}
 					switch (pdhcpsoServerOptions->pbMessageType[2]) {
-					case DHCPMessageType_ACK:
+					case MsgType_ACK:
 					 	assert(INADDR_BROADCAST != dwClientPreviousOfferAddr);
 						pdhcpmReply->ciaddr = dwClientPreviousOfferAddr;
 						pdhcpmReply->yiaddr = dwClientPreviousOfferAddr;
@@ -312,8 +307,8 @@ void DHCPServer::ProcessDHCPClientRequest(const BYTE *const pbData, const int iD
 
 						MessageCallback_ACK(pcsClientHostName, dwClientPreviousOfferAddr);
 						break;
-					case DHCPMessageType_NAK:
-						C_ASSERT(0 == option_PAD);
+					case MsgType_NAK:
+						C_ASSERT(0 == MsgOption_PAD);
 						ZeroMemory(pdhcpsoServerOptions->pbLeaseTime, sizeof(pdhcpsoServerOptions->pbLeaseTime));
 						ZeroMemory(pdhcpsoServerOptions->pbSubnetMask, sizeof(pdhcpsoServerOptions->pbSubnetMask));
 						bSendDHCPMessage = true;
@@ -326,17 +321,17 @@ void DHCPServer::ProcessDHCPClientRequest(const BYTE *const pbData, const int iD
 					}
 				}
 				break;
-				case DHCPMessageType_DECLINE:
+				case MsgType_DECLINE:
 					// Fall-through
-				case DHCPMessageType_RELEASE:
+				case MsgType_RELEASE:
 					// UNSUPPORTED: Mark address as unused
 					break;
-				case DHCPMessageType_INFORM:
+				case MsgType_INFORM:
 					// Unsupported DHCP message type - fail silently
 					break;
-				case DHCPMessageType_OFFER:
-				case DHCPMessageType_ACK:
-				case DHCPMessageType_NAK:
+				case MsgType_OFFER:
+				case MsgType_ACK:
+				case MsgType_NAK:
 					assert(!(TEXT("Unexpected DHCP message type.")));
 					break;
 				default:
@@ -350,9 +345,9 @@ void DHCPServer::ProcessDHCPClientRequest(const BYTE *const pbData, const int iD
 					u_long ulAddr = INADDR_LOOPBACK;  // Invalid value
 					if (0 == pdhcpmRequest->giaddr) {
 						switch (pdhcpsoServerOptions->pbMessageType[2]) {
-						case DHCPMessageType_OFFER:
+						case MsgType_OFFER:
 							// Fall-through
-						case DHCPMessageType_ACK:
+						case MsgType_ACK:
 						{
 							if (0 == pdhcpmRequest->ciaddr) {
 								if (0 != (BROADCAST_FLAG & pdhcpmRequest->flags)) {
@@ -372,7 +367,7 @@ void DHCPServer::ProcessDHCPClientRequest(const BYTE *const pbData, const int iD
 							}
 						}
 						break;
-						case DHCPMessageType_NAK:
+						case MsgType_NAK:
 						{
 							ulAddr = INADDR_BROADCAST;
 						}
@@ -555,6 +550,7 @@ bool DHCPLite::DHCPServer::Init() {
 bool DHCPServer::Init(DHCPConfig config) {
 	DHCPServer::config = config;
 
+	AddressInUseInformation aiuiServerAddress{};
 	aiuiServerAddress.dwAddrValue = IPtoValue(config.addrInfo.address);
 	aiuiServerAddress.pbClientIdentifier = 0; // Server entry is only entry without a client ID
 	aiuiServerAddress.dwClientIdentifierSize = 0;
@@ -583,8 +579,9 @@ bool DHCPServer::Cleanup() {
 	if (!WSACleanup()) return false;
 
 	for (size_t i = 0; i < vAddressesInUse.size(); i++) {
+		AddressInUseInformation aiuiServerAddress{};
 		aiuiServerAddress = vAddressesInUse.at(i);
-		if (0 != aiuiServerAddress.pbClientIdentifier) {
+		if (aiuiServerAddress.pbClientIdentifier != 0) {
 			LocalFree(aiuiServerAddress.pbClientIdentifier);
 		}
 	}
