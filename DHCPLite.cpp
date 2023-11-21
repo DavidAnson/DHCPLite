@@ -483,21 +483,21 @@ std::vector<DHCPServer::IPAddrInfo> DHCPServer::GetIPAddrInfoList() {
 	DWORD dwGetIpAddrTableResult = GetIpAddrTable(&miatIpAddrTable, &ulIpAddrTableSize, FALSE);
 	// Technically, if NO_ERROR was returned, we don't need to allocate a buffer - but it's easier to do so anyway - and because we need more data than fits in the default buffer, this would only be wasteful in the error case
 	if ((NO_ERROR != dwGetIpAddrTableResult) && (ERROR_INSUFFICIENT_BUFFER != dwGetIpAddrTableResult)) {
-		throw GetIPAddrException("Unable to query IP address table.");
+		throw IPAddrException("Unable to query IP address table.");
 		return infoList;
 	}
 
 	const ULONG ulIpAddrTableSizeAllocated = ulIpAddrTableSize;
 	BYTE *const pbIpAddrTableBuffer = (BYTE *)LocalAlloc(LMEM_FIXED, ulIpAddrTableSizeAllocated);
 	if (nullptr == pbIpAddrTableBuffer) {
-		throw GetIPAddrException("Insufficient memory for IP address table.");
+		throw IPAddrException("Insufficient memory for IP address table.");
 		LocalFree(pbIpAddrTableBuffer);
 		return infoList;
 	}
 
 	dwGetIpAddrTableResult = GetIpAddrTable((MIB_IPADDRTABLE *)pbIpAddrTableBuffer, &ulIpAddrTableSize, FALSE);
 	if ((NO_ERROR != dwGetIpAddrTableResult) || (ulIpAddrTableSizeAllocated > ulIpAddrTableSize)) {
-		throw GetIPAddrException("Unable to query IP address table.");
+		throw IPAddrException("Unable to query IP address table.");
 		LocalFree(pbIpAddrTableBuffer);
 		return infoList;
 	}
@@ -512,6 +512,43 @@ std::vector<DHCPServer::IPAddrInfo> DHCPServer::GetIPAddrInfoList() {
 	return infoList;
 }
 
+DHCPServer::DHCPConfig DHCPServer::GetDHCPConfig() {
+	auto addrInfoList = DHCPServer::GetIPAddrInfoList();
+	if (2 != addrInfoList.size()) {
+		throw IPAddrException("Too many or too few IP addresses are present on this machine. [Routing can not be bypassed.]");
+		return DHCPServer::DHCPConfig{};
+	}
+
+	const bool loopbackAtIndex0 = DHCPServer::ValuetoIP(0x7f000001) == addrInfoList[0].address;
+	const bool loopbackAtIndex1 = DHCPServer::ValuetoIP(0x7f000001) == addrInfoList[1].address;
+	if (loopbackAtIndex0 == loopbackAtIndex1) {
+		throw IPAddrException("Unsupported IP address configuration. [Expected to find loopback address and one other.]");
+		return DHCPServer::DHCPConfig{};
+	}
+
+	const int tableIndex = loopbackAtIndex1 ? 0 : 1;
+	const DWORD dwAddr = addrInfoList[tableIndex].address;
+	if (0 == dwAddr) {
+		throw IPAddrException("IP Address is 0.0.0.0 - no network is available on this machine. [APIPA (Auto-IP) may not have assigned an IP address yet.]");
+		return DHCPServer::DHCPConfig{};
+	}
+
+	const DWORD dwMask = addrInfoList[tableIndex].mask;
+	const DWORD dwAddrValue = DHCPServer::IPtoValue(dwAddr);
+	const DWORD dwMaskValue = DHCPServer::IPtoValue(dwMask);
+	const DWORD dwMinAddrValue = ((dwAddrValue & dwMaskValue) | 2);  // Skip x.x.x.1 (default router address)
+	const DWORD dwMaxAddrValue = ((dwAddrValue & dwMaskValue) | (~(dwMaskValue | 1)));
+	const DWORD dwMinAddr = DHCPServer::ValuetoIP(dwMinAddrValue);
+	const DWORD dwMaxAddr = DHCPServer::ValuetoIP(dwMaxAddrValue);
+
+	if (dwMinAddrValue > dwMaxAddrValue) {
+		throw IPAddrException("No network is available on this machine. [The subnet mask is incorrect.]");
+		return DHCPServer::DHCPConfig{};
+	}
+
+	return DHCPServer::DHCPConfig{ dwAddr, dwMask, dwMinAddr, dwMaxAddr };
+}
+
 void DHCPServer::SetDiscoverCallback(MessageCallback callback) {
 	MessageCallback_Discover = callback;
 }
@@ -524,15 +561,27 @@ void DHCPServer::SetNAKCallback(MessageCallback callback) {
 	MessageCallback_NAK = callback;
 }
 
-bool DHCPServer::Init(DWORD dwServerAddr) {
-	aiuiServerAddress.dwAddrValue = IPtoValue(dwServerAddr);
+DHCPLite::DHCPServer::DHCPServer(DHCPConfig config) {
+	Init(config);
+}
+
+bool DHCPLite::DHCPServer::Init() {
+	Init(GetDHCPConfig());
+
+	return false;
+}
+
+bool DHCPServer::Init(DHCPConfig config) {
+	DHCPServer::config = config;
+
+	aiuiServerAddress.dwAddrValue = IPtoValue(config.addrInfo.address);
 	aiuiServerAddress.pbClientIdentifier = 0; // Server entry is only entry without a client ID
 	aiuiServerAddress.dwClientIdentifierSize = 0;
 	vAddressesInUse.push_back(aiuiServerAddress);
 
 	WSADATA wsaData;
 	if (NO_ERROR == WSAStartup(MAKEWORD(1, 1), &wsaData)) {
-		return InitializeDHCPServer(&sServerSocket, dwServerAddr, pcsServerHostName, sizeof(pcsServerHostName));
+		return InitializeDHCPServer(&sServerSocket, config.addrInfo.address, pcsServerHostName, sizeof(pcsServerHostName));
 	}
 	else {
 		throw SocketException("Unable to initialize WinSock.");
@@ -541,7 +590,7 @@ bool DHCPServer::Init(DWORD dwServerAddr) {
 	return false;
 }
 
-void DHCPServer::Start(DHCPConfig config) {
+void DHCPServer::Start() {
 	assert(ReadDHCPClientRequests(sServerSocket, pcsServerHostName, &vAddressesInUse,
 		config.addrInfo.address, config.addrInfo.mask, config.minAddr, config.maxAddr));
 }

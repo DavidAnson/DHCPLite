@@ -94,7 +94,7 @@ namespace DHCPLite {
 		SOCKET sServerSocket = INVALID_SOCKET; // Global to allow ConsoleCtrlHandlerRoutine access to it
 		VectorAddressInUseInformation vAddressesInUse;
 		AddressInUseInformation aiuiServerAddress{};
-		char pcsServerHostName[MAX_HOSTNAME_LENGTH];
+		char pcsServerHostName[MAX_HOSTNAME_LENGTH]{};
 
 		int FindIndexOf(const VectorAddressInUseInformation *const pvAddressesInUse, FindIndexOfFilter pFilter, const void *const pvFilterData);
 
@@ -128,8 +128,11 @@ namespace DHCPLite {
 		static std::string IPAddrToString(DWORD address);
 
 		static std::vector<IPAddrInfo> GetIPAddrInfoList();
+		static DHCPConfig GetDHCPConfig();
 
 	private:
+		DHCPConfig config{};
+
 		MessageCallback MessageCallback_Discover;
 		MessageCallback MessageCallback_ACK;
 		MessageCallback MessageCallback_NAK;
@@ -147,9 +150,13 @@ namespace DHCPLite {
 		// Callback Parameter: pcsClientHostName, dwClientPreviousOfferAddr
 		void SetNAKCallback(MessageCallback callback);
 
-		bool Init(DWORD dwServerAddr);
+		DHCPServer() {}
+		DHCPServer(DHCPConfig config);
 
-		void Start(DHCPConfig config);
+		bool Init();
+		bool Init(DHCPConfig config);
+
+		void Start();
 
 		void Close();
 
@@ -161,9 +168,9 @@ namespace DHCPLite {
 		DHCPException(const char *Message) : exception(Message, 1) {}
 	};
 
-	class GetIPAddrException : public DHCPException {
+	class IPAddrException : public DHCPException {
 	public:
-		GetIPAddrException(const char *Message) : DHCPException(Message) {}
+		IPAddrException(const char *Message) : DHCPException(Message) {}
 	};
 
 	class SocketException : public DHCPException {

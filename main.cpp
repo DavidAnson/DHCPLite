@@ -4,50 +4,6 @@
 
 using namespace DHCPLite;
 
-DHCPServer::DHCPConfig GetIPAddrInfo() {
-	auto addrInfoList = DHCPServer::GetIPAddrInfoList();
-	if (2 != addrInfoList.size()) {
-		std::cout << "Too many or too few IP addresses are present on this machine. [Routing can not be bypassed.]\n";
-		return DHCPServer::DHCPConfig{};
-	}
-
-	const bool loopbackAtIndex0 = DHCPServer::ValuetoIP(0x7f000001) == addrInfoList[0].address;
-	const bool loopbackAtIndex1 = DHCPServer::ValuetoIP(0x7f000001) == addrInfoList[1].address;
-	if (loopbackAtIndex0 == loopbackAtIndex1) {
-		std::cout << "Unsupported IP address configuration. [Expected to find loopback address and one other.]\n";
-		return DHCPServer::DHCPConfig{};
-	}
-
-	const int tableIndex = loopbackAtIndex1 ? 0 : 1;
-	std::cout << "IP Address being used:\n";
-	const DWORD dwAddr = addrInfoList[tableIndex].address;
-	if (0 == dwAddr) {
-		std::cout << "IP Address is 0.0.0.0 - no network is available on this machine. [APIPA (Auto-IP) may not have assigned an IP address yet.]\n";
-		return DHCPServer::DHCPConfig{};
-	}
-
-	const DWORD dwMask = addrInfoList[tableIndex].mask;
-	const DWORD dwAddrValue = DHCPServer::IPtoValue(dwAddr);
-	const DWORD dwMaskValue = DHCPServer::IPtoValue(dwMask);
-	const DWORD dwMinAddrValue = ((dwAddrValue & dwMaskValue) | 2);  // Skip x.x.x.1 (default router address)
-	const DWORD dwMaxAddrValue = ((dwAddrValue & dwMaskValue) | (~(dwMaskValue | 1)));
-	const DWORD dwMinAddr = DHCPServer::ValuetoIP(dwMinAddrValue);
-	const DWORD dwMaxAddr = DHCPServer::ValuetoIP(dwMaxAddrValue);
-
-	std::cout << DHCPServer::IPAddrToString(dwAddr)
-		<< " - Subnet:" << DHCPServer::IPAddrToString(dwMask)
-		<< " - Range:["
-		<< DHCPServer::IPAddrToString(dwMinAddr)
-		<< "-" << DHCPServer::IPAddrToString(dwMaxAddr) << "]\n";
-
-	if (dwMinAddrValue > dwMaxAddrValue) {
-		std::cout << "No network is available on this machine. [The subnet mask is incorrect.]\n";
-		return DHCPServer::DHCPConfig{};
-	}
-
-	return DHCPServer::DHCPConfig{ dwAddr, dwMask, dwMinAddr, dwMaxAddr };
-}
-
 std::unique_ptr<DHCPServer> server;
 
 BOOL WINAPI ConsoleCtrlHandlerRoutine(DWORD dwCtrlType) {
@@ -72,31 +28,32 @@ int main(int /*argc*/, char ** /*argv*/) {
 		return 1;
 	}
 
-	DHCPServer::DHCPConfig config{};
+	server->SetDiscoverCallback([](char *clientHostName, DWORD offerAddr) {
+		std::cout << "Offering client \"" << clientHostName << "\" "
+			<< "IP address " << DHCPServer::IPAddrToString(offerAddr) << "\n";
+	});
+
+	server->SetACKCallback([](char *clientHostName, DWORD offerAddr) {
+		std::cout << "Acknowledging client \"" << clientHostName << "\" "
+			<< "has IP address " << DHCPServer::IPAddrToString(offerAddr) << "\n";
+	});
+
+	server->SetNAKCallback([](char *clientHostName, DWORD offerAddr) {
+		std::cout << "Denying client \"" << clientHostName << "\" unoffered IP address.\n";
+	});
+
 	try {
-		config = GetIPAddrInfo();
-		if (config.addrInfo.address == 0) {
-			system("pause");
-			return 1;
-		}
+		auto config = DHCPServer::GetDHCPConfig();
 
-		server->SetDiscoverCallback([](char *clientHostName, DWORD offerAddr) {
-			std::cout << "Offering client \"" << clientHostName << "\" "
-				<< "IP address " << DHCPServer::IPAddrToString(offerAddr) << "\n";
-		});
+		std::cout << "IP Address being used:\n"
+			<< DHCPServer::IPAddrToString(config.addrInfo.address)
+			<< " - Subnet:" << DHCPServer::IPAddrToString(config.addrInfo.mask)
+			<< " - Range:[" << DHCPServer::IPAddrToString(config.minAddr)
+			<< "-" << DHCPServer::IPAddrToString(config.maxAddr) << "]\n";
 
-		server->SetACKCallback([](char *clientHostName, DWORD offerAddr) {
-			std::cout << "Acknowledging client \"" << clientHostName << "\" "
-				<< "has IP address " << DHCPServer::IPAddrToString(offerAddr) << "\n";
-		});
-
-		server->SetNAKCallback([](char *clientHostName, DWORD offerAddr) {
-			std::cout << "Denying client \"" << clientHostName << "\" unoffered IP address.\n";
-		});
-
-		server->Init(config.addrInfo.address);
+		server->Init(config);
 		std::cout << "Server is running...  (Press Ctrl+C to shutdown.)\n";
-		server->Start(config);
+		server->Start();
 	}
 	catch (DHCPException e) {
 		std::cout << "[Error] " << e.what() << "\n";
