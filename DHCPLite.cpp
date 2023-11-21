@@ -1,15 +1,13 @@
 #include "DHCPLite.h"
 #include <iostream>
 #include <tchar.h>
+#include <assert.h>
 #include <iphlpapi.h>
 #include <iprtrmib.h>
 
-MessageCallback MessageCallback_Discover;
-MessageCallback MessageCallback_ACK;
-MessageCallback MessageCallback_NAK;
+using namespace DHCPLite;
 
-typedef bool(*FindIndexOfFilter)(const AddressInUseInformation &raiui, const void *const pvFilterData);
-int FindIndexOf(const VectorAddressInUseInformation *const pvAddressesInUse, const FindIndexOfFilter pFilter, const void *const pvFilterData) {
+int DHCPServer::FindIndexOf(const VectorAddressInUseInformation *const pvAddressesInUse, FindIndexOfFilter pFilter, const void *const pvFilterData) {
  	assert((0 != pvAddressesInUse) && (0 != pFilter) && (0 != pvFilterData));
 
 	for (size_t i = 0; i < pvAddressesInUse->size(); i++) {
@@ -20,7 +18,7 @@ int FindIndexOf(const VectorAddressInUseInformation *const pvAddressesInUse, con
 	return -1;
 }
 
-DWORD IPtoValue(DWORD ip) {
+DWORD DHCPServer::IPtoValue(DWORD ip) {
 	// Convert between big and small endian order
 	DWORD value = 0;
 	BYTE *valueBytes = (BYTE *)&value;
@@ -32,11 +30,11 @@ DWORD IPtoValue(DWORD ip) {
 	return value;
 }
 
-DWORD ValuetoIP(DWORD value) {
+DWORD DHCPServer::ValuetoIP(DWORD value) {
 	return IPtoValue(value);
 }
 
-std::string IPAddrToString(DWORD address) {
+std::string DHCPServer::IPAddrToString(DWORD address) {
 	BYTE *addrBytes = (BYTE *)&address;
 
 	std::string str = "";
@@ -48,7 +46,7 @@ std::string IPAddrToString(DWORD address) {
 	return str;
 }
 
-std::vector<IPAddrInfo> GetIPAddrInfoList() {
+std::vector<DHCPServer::IPAddrInfo> DHCPServer::GetIPAddrInfoList() {
 	std::vector<IPAddrInfo> infoList;
 
 	MIB_IPADDRTABLE miatIpAddrTable;
@@ -85,7 +83,7 @@ std::vector<IPAddrInfo> GetIPAddrInfoList() {
 	return infoList;
 }
 
-bool InitializeDHCPServer(SOCKET *const psServerSocket, const DWORD dwServerAddr, char *const pcsServerHostName, const size_t stServerHostNameLength) {
+bool DHCPServer::InitializeDHCPServer(SOCKET *const psServerSocket, const DWORD dwServerAddr, char *const pcsServerHostName, const size_t stServerHostNameLength) {
  	assert((0 != psServerSocket) && (0 != dwServerAddr) && (0 != pcsServerHostName) && (1 <= stServerHostNameLength));
 
 	// Determine server hostname
@@ -121,7 +119,7 @@ bool InitializeDHCPServer(SOCKET *const psServerSocket, const DWORD dwServerAddr
 	return false;
 }
 
-bool FindOptionData(const BYTE bOption, const BYTE *const pbOptions, const int iOptionsSize, const BYTE **const ppbOptionData, unsigned int *const piOptionDataSize) {
+bool DHCPServer::FindOptionData(const BYTE bOption, const BYTE *const pbOptions, const int iOptionsSize, const BYTE **const ppbOptionData, unsigned int *const piOptionDataSize) {
  	assert(((0 == iOptionsSize) || (0 != pbOptions)) && (0 != ppbOptionData) && (0 != piOptionDataSize)
 		&& (option_PAD != bOption) && (option_END != bOption));
 	
@@ -159,7 +157,7 @@ bool FindOptionData(const BYTE bOption, const BYTE *const pbOptions, const int i
 	return false;
 }
 
-bool GetDHCPMessageType(const BYTE *const pbOptions, const int iOptionsSize, DHCPMessageTypes *const pdhcpmtMessageType) {
+bool DHCPServer::GetDHCPMessageType(const BYTE *const pbOptions, const int iOptionsSize, DHCPMessageTypes *const pdhcpmtMessageType) {
  	assert(((0 == iOptionsSize) || (0 != pbOptions)) && (0 != pdhcpmtMessageType));
 
 	const BYTE *pbDHCPMessageTypeData;
@@ -172,20 +170,7 @@ bool GetDHCPMessageType(const BYTE *const pbOptions, const int iOptionsSize, DHC
 	return false;
 }
 
-bool AddressInUseInformationAddrValueFilter(const AddressInUseInformation &raiui, const void *const pvFilterData) {
-	const DWORD *const pdwAddrValue = (DWORD *)pvFilterData;
-	return (*pdwAddrValue == raiui.dwAddrValue);
-}
-
-bool AddressInUseInformationClientIdentifierFilter(const AddressInUseInformation &raiui, const void *const pvFilterData) {
-	const ClientIdentifierData *const pcid = (ClientIdentifierData *)pvFilterData;
- 	assert(0 != pcid);
-
-	return (0 != raiui.dwClientIdentifierSize) && (pcid->dwClientIdentifierSize == raiui.dwClientIdentifierSize)
-		&& (0 == memcmp(pcid->pbClientIdentifier, raiui.pbClientIdentifier, pcid->dwClientIdentifierSize));
-}
-
-void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char *const pcsServerHostName, const BYTE *const pbData, const int iDataSize, VectorAddressInUseInformation *const pvAddressesInUse, const DWORD dwServerAddr, const DWORD dwMask, const DWORD dwMinAddr, const DWORD dwMaxAddr) {
+void DHCPServer::ProcessDHCPClientRequest(const SOCKET sServerSocket, const char *const pcsServerHostName, const BYTE *const pbData, const int iDataSize, VectorAddressInUseInformation *const pvAddressesInUse, const DWORD dwServerAddr, const DWORD dwMask, const DWORD dwMinAddr, const DWORD dwMaxAddr) {
  	assert((INVALID_SOCKET != sServerSocket) && (0 != pcsServerHostName) && ((0 == iDataSize) || (0 != pbData)) && (0 != pvAddressesInUse) && (0 != dwServerAddr) && (0 != dwMask) && (0 != dwMinAddr) && (0 != dwMaxAddr));
 
 	const BYTE pbDHCPMagicCookie[] = { 99, 130, 83, 99 }; // DHCP magic cookie values
@@ -222,7 +207,13 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char *const pcsS
 				bool bSeenClientBefore = false;
 				DWORD dwClientPreviousOfferAddr = (DWORD)INADDR_BROADCAST;  // Invalid IP address for later comparison
 				const ClientIdentifierData cid = { pbRequestClientIdentifierData, (DWORD)iRequestClientIdentifierDataSize };
-				const int iIndex = FindIndexOf(pvAddressesInUse, AddressInUseInformationClientIdentifierFilter, &cid);
+				const int iIndex = FindIndexOf(pvAddressesInUse, [](const AddressInUseInformation &raiui, const void *const pvFilterData) {
+					const ClientIdentifierData *const pcid = (ClientIdentifierData *)pvFilterData;
+					assert(0 != pcid);
+
+					return (0 != raiui.dwClientIdentifierSize) && (pcid->dwClientIdentifierSize == raiui.dwClientIdentifierSize)
+						&& (0 == memcmp(pcid->pbClientIdentifier, raiui.pbClientIdentifier, pcid->dwClientIdentifierSize));
+				}, &cid);
 				if (-1 != iIndex) {
 					const AddressInUseInformation aiui = pvAddressesInUse->at((size_t)iIndex);
 					dwClientPreviousOfferAddr = ValuetoIP(aiui.dwAddrValue);
@@ -296,7 +287,10 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char *const pcsS
 						 	assert(dwMaxAddrValue + 1 == dwOfferAddrValue);
 							dwOfferAddrValue = dwMinAddrValue;
 						}
-						bOfferAddrValueValid = (-1 == FindIndexOf(pvAddressesInUse, AddressInUseInformationAddrValueFilter, &dwOfferAddrValue));
+						bOfferAddrValueValid = (-1 == FindIndexOf(pvAddressesInUse, [](const AddressInUseInformation &raiui, const void *const pvFilterData) {
+							const DWORD *const pdwAddrValue = (DWORD *)pvFilterData;
+							return (*pdwAddrValue == raiui.dwAddrValue);
+						}, &dwOfferAddrValue));
 						bOfferedInitialValue = true;
 						if (!bOfferAddrValueValid) {
 							dwOfferAddrValue++;
@@ -486,7 +480,7 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char *const pcsS
 	}
 }
 
-bool ReadDHCPClientRequests(const SOCKET sServerSocket, const char *const pcsServerHostName, VectorAddressInUseInformation *const pvAddressesInUse, const DWORD dwServerAddr, const DWORD dwMask, const DWORD dwMinAddr, const DWORD dwMaxAddr) {
+bool DHCPServer::ReadDHCPClientRequests(const SOCKET sServerSocket, const char *const pcsServerHostName, VectorAddressInUseInformation *const pvAddressesInUse, const DWORD dwServerAddr, const DWORD dwMask, const DWORD dwMinAddr, const DWORD dwMaxAddr) {
 	assert((INVALID_SOCKET != sServerSocket) && (0 != pcsServerHostName) && (0 != pvAddressesInUse) && (0 != dwServerAddr) && (0 != dwMask) && (0 != dwMinAddr) && (0 != dwMaxAddr));
 
 	BYTE *const pbReadBuffer = (BYTE *)LocalAlloc(LMEM_FIXED, MAX_UDP_MESSAGE_SIZE);
@@ -516,24 +510,19 @@ bool ReadDHCPClientRequests(const SOCKET sServerSocket, const char *const pcsSer
 	return true;
 }
 
-SOCKET sServerSocket = INVALID_SOCKET;  // Global to allow ConsoleCtrlHandlerRoutine access to it
-VectorAddressInUseInformation vAddressesInUse;
-AddressInUseInformation aiuiServerAddress{};
-char pcsServerHostName[MAX_HOSTNAME_LENGTH];
-
-void SetDiscoverCallback(MessageCallback callback) {
+void DHCPServer::SetDiscoverCallback(MessageCallback callback) {
 	MessageCallback_Discover = callback;
 }
 
-void SetACKCallback(MessageCallback callback) {
+void DHCPServer::SetACKCallback(MessageCallback callback) {
 	MessageCallback_ACK = callback;
 }
 
-void SetNAKCallback(MessageCallback callback) {
+void DHCPServer::SetNAKCallback(MessageCallback callback) {
 	MessageCallback_NAK = callback;
 }
 
-bool Init(const DWORD dwServerAddr) {
+bool DHCPServer::Init(const DWORD dwServerAddr) {
 	aiuiServerAddress.dwAddrValue = IPtoValue(dwServerAddr);
 	aiuiServerAddress.pbClientIdentifier = 0; // Server entry is only entry without a client ID
 	aiuiServerAddress.dwClientIdentifierSize = 0;
@@ -550,19 +539,19 @@ bool Init(const DWORD dwServerAddr) {
 	return false;
 }
 
-void Start(DHCPConfig config) {
+void DHCPServer::Start(DHCPConfig config) {
 	assert(ReadDHCPClientRequests(sServerSocket, pcsServerHostName, &vAddressesInUse,
 		config.addrInfo.address, config.addrInfo.mask, config.minAddr, config.maxAddr));
 }
 
-void Close() {
+void DHCPServer::Close() {
 	if (INVALID_SOCKET != sServerSocket) {
 		assert(NO_ERROR == closesocket(sServerSocket));
 		sServerSocket = INVALID_SOCKET;
 	}
 }
 
-bool Cleanup() {
+bool DHCPServer::Cleanup() {
 	if (!WSACleanup()) return false;
 
 	for (size_t i = 0; i < vAddressesInUse.size(); i++) {
