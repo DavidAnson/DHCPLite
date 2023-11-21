@@ -53,14 +53,14 @@ DHCPConfig GetIPAddrInfo() {
 	return DHCPConfig{ dwAddr, dwMask, dwMinAddr, dwMaxAddr };
 }
 
-void main(int /*argc*/, char ** /*argv*/) {
+int main(int /*argc*/, char ** /*argv*/) {
 	std::cout << "DHCPLite\n2016-04-02\n";
 	std::cout << "Copyright (c) 2001-2016 by David Anson (http://dlaa.me/)\n\n";
 
 	if (!SetConsoleCtrlHandler(ConsoleCtrlHandlerRoutine, TRUE)) {
 		std::cout << "[Error] Unable to set Ctrl-C handler.\n";
 		system("pause");
-		return;
+		return 1;
 	}
 
 	DHCPConfig config{};
@@ -68,7 +68,7 @@ void main(int /*argc*/, char ** /*argv*/) {
 		config = GetIPAddrInfo();
 		if (config.addrInfo.address == 0) {
 			system("pause");
-			return;
+			return 1;
 		}
 
 		SetDiscoverCallback([](char *clientHostName, DWORD offerAddr) {
@@ -94,4 +94,5 @@ void main(int /*argc*/, char ** /*argv*/) {
 	Cleanup();
 
 	system("pause");
+	return 0;
 }

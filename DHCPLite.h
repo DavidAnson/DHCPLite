@@ -29,17 +29,16 @@ DWORD IPtoValue(DWORD ip);
 DWORD ValuetoIP(DWORD value);
 std::string IPAddrToString(DWORD address);
 
-const char pcsServerName[] = "DHCPLite DHCP Server";
-
 // Maximum size of a UDP datagram (see RFC 768)
-#define MAX_UDP_MESSAGE_SIZE ((65536)-8)
+constexpr auto MAX_UDP_MESSAGE_SIZE = 65536-8;
 // DHCP constants (see RFC 2131 section 4.1)
-#define DHCP_SERVER_PORT (67)
-#define DHCP_CLIENT_PORT (68)
+constexpr auto DHCP_SERVER_PORT = 67;
+constexpr auto DHCP_CLIENT_PORT = 68;
 // Broadcast bit for flags field (RFC 2131 section 2)
-#define BROADCAST_FLAG (0x80)
+constexpr auto BROADCAST_FLAG = 0x80;
 // For display of host name information
-#define MAX_HOSTNAME_LENGTH (256)
+constexpr auto MAX_HOSTNAME_LENGTH = 256;
+
 // RFC 2131 section 2
 enum op_values {
 	op_BOOTREQUEST = 1,

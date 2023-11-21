@@ -189,6 +189,7 @@ void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char *const pcsS
  	assert((INVALID_SOCKET != sServerSocket) && (0 != pcsServerHostName) && ((0 == iDataSize) || (0 != pbData)) && (0 != pvAddressesInUse) && (0 != dwServerAddr) && (0 != dwMask) && (0 != dwMinAddr) && (0 != dwMaxAddr));
 
 	const BYTE pbDHCPMagicCookie[] = { 99, 130, 83, 99 }; // DHCP magic cookie values
+	const char pcsServerName[] = "DHCPLite DHCP Server";
 
 	const DHCPMessage *const pdhcpmRequest = (DHCPMessage *)pbData;
 	if ((((sizeof(*pdhcpmRequest) + sizeof(pbDHCPMagicCookie)) <= iDataSize) &&  // Take into account mandatory DHCP magic cookie values in options array (RFC 2131 section 3)
