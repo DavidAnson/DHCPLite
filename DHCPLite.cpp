@@ -69,7 +69,6 @@ bool DHCPServer::InitializeDHCPServer(SOCKET *const psServerSocket, const DWORD 
 	*psServerSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
 	if (INVALID_SOCKET == *psServerSocket) {
 		throw SocketException("Unable to open server socket (port 67).");
-		return false;
 	}
 
 	SOCKADDR_IN saServerAddress{};
@@ -79,18 +78,14 @@ bool DHCPServer::InitializeDHCPServer(SOCKET *const psServerSocket, const DWORD 
 	const int iServerAddressSize = sizeof(saServerAddress);
 	if (SOCKET_ERROR == bind(*psServerSocket, (SOCKADDR *)(&saServerAddress), iServerAddressSize)) {
 		throw SocketException("Unable to bind to server socket (port 67).");
-		return false;
 	}
 
 	int iBroadcastOption = TRUE;
-	if (NO_ERROR == setsockopt(*psServerSocket, SOL_SOCKET, SO_BROADCAST, (char *)(&iBroadcastOption), sizeof(iBroadcastOption))) {
-		return true;
-	}
-	else {
+	if (NO_ERROR != setsockopt(*psServerSocket, SOL_SOCKET, SO_BROADCAST, (char *)(&iBroadcastOption), sizeof(iBroadcastOption))) {
 		throw SocketException("Unable to set socket options.");
 	}
 
-	return false;
+	return true;
 }
 
 bool DHCPServer::GetDHCPMessageType(const BYTE *const pbOptions, const int iOptionsSize, DHCPMessageTypes *const pdhcpmtMessageType) {
@@ -251,10 +246,11 @@ void DHCPServer::ProcessDHCPClientRequest(const SOCKET sServerSocket, const char
 							MessageCallback_Discover(pcsClientHostName, dwOfferAddr);
 
 							if (bSeenClientBefore) {
-							 	assert(0 == LocalFree(aiuiClientAddress.pbClientIdentifier));
+							 	LocalFree(aiuiClientAddress.pbClientIdentifier);
 							}
 						}
 						else {
+							LocalFree(aiuiClientAddress.pbClientIdentifier);
 							throw RequestException("Insufficient memory to add client address.");
 						}
 					}
@@ -408,11 +404,11 @@ void DHCPServer::ProcessDHCPClientRequest(const SOCKET sServerSocket, const char
 			}
 		}
 		else {
-			assert(!(TEXT("Invalid DHCP message (invalid or missing DHCP message type).")));
+			assert(!"Invalid DHCP message (invalid or missing DHCP message type).");
 		}
 	}
 	else {
-		assert(!(TEXT("Invalid DHCP message (failed initial checks).")));
+		assert(!"Invalid DHCP message (failed initial checks).");
 	}
 }
 
@@ -422,12 +418,9 @@ bool DHCPServer::ReadDHCPClientRequests(const SOCKET sServerSocket, const char *
 	BYTE *const pbReadBuffer = (BYTE *)LocalAlloc(LMEM_FIXED, MAX_UDP_MESSAGE_SIZE);
 	if (0 == pbReadBuffer) {
 		throw RequestException("Unable to allocate memory for client datagram read buffer.");
-		return false;
 	}
 
 	int iLastError = 0;
-	assert(WSAENOTSOCK != iLastError);
-
 	while (WSAENOTSOCK != iLastError) {
 		SOCKADDR_IN saClientAddress{};
 		int iClientAddressSize = sizeof(saClientAddress);
@@ -438,8 +431,10 @@ bool DHCPServer::ReadDHCPClientRequests(const SOCKET sServerSocket, const char *
 		}
 		else {
 			iLastError = WSAGetLastError();
-			if (iLastError != WSAENOTSOCK && iLastError != WSAEINTR)
+			if (iLastError != WSAENOTSOCK && iLastError != WSAEINTR) {
+				LocalFree(pbReadBuffer);
 				throw SocketException("Call to recvfrom returned error.");
+			}
 		}
 	}
 	LocalFree(pbReadBuffer);
@@ -484,22 +479,19 @@ std::vector<DHCPServer::IPAddrInfo> DHCPServer::GetIPAddrInfoList() {
 	// Technically, if NO_ERROR was returned, we don't need to allocate a buffer - but it's easier to do so anyway - and because we need more data than fits in the default buffer, this would only be wasteful in the error case
 	if ((NO_ERROR != dwGetIpAddrTableResult) && (ERROR_INSUFFICIENT_BUFFER != dwGetIpAddrTableResult)) {
 		throw IPAddrException("Unable to query IP address table.");
-		return infoList;
 	}
 
 	const ULONG ulIpAddrTableSizeAllocated = ulIpAddrTableSize;
 	BYTE *const pbIpAddrTableBuffer = (BYTE *)LocalAlloc(LMEM_FIXED, ulIpAddrTableSizeAllocated);
 	if (nullptr == pbIpAddrTableBuffer) {
-		throw IPAddrException("Insufficient memory for IP address table.");
 		LocalFree(pbIpAddrTableBuffer);
-		return infoList;
+		throw IPAddrException("Insufficient memory for IP address table.");
 	}
 
 	dwGetIpAddrTableResult = GetIpAddrTable((MIB_IPADDRTABLE *)pbIpAddrTableBuffer, &ulIpAddrTableSize, FALSE);
 	if ((NO_ERROR != dwGetIpAddrTableResult) || (ulIpAddrTableSizeAllocated > ulIpAddrTableSize)) {
-		throw IPAddrException("Unable to query IP address table.");
 		LocalFree(pbIpAddrTableBuffer);
-		return infoList;
+		throw IPAddrException("Unable to query IP address table.");
 	}
 
 	const MIB_IPADDRTABLE *const pmiatIpAddrTable = (MIB_IPADDRTABLE *)pbIpAddrTableBuffer;
@@ -516,21 +508,18 @@ DHCPServer::DHCPConfig DHCPServer::GetDHCPConfig() {
 	auto addrInfoList = DHCPServer::GetIPAddrInfoList();
 	if (2 != addrInfoList.size()) {
 		throw IPAddrException("Too many or too few IP addresses are present on this machine. [Routing can not be bypassed.]");
-		return DHCPServer::DHCPConfig{};
 	}
 
 	const bool loopbackAtIndex0 = DHCPServer::ValuetoIP(0x7f000001) == addrInfoList[0].address;
 	const bool loopbackAtIndex1 = DHCPServer::ValuetoIP(0x7f000001) == addrInfoList[1].address;
 	if (loopbackAtIndex0 == loopbackAtIndex1) {
 		throw IPAddrException("Unsupported IP address configuration. [Expected to find loopback address and one other.]");
-		return DHCPServer::DHCPConfig{};
 	}
 
 	const int tableIndex = loopbackAtIndex1 ? 0 : 1;
 	const DWORD dwAddr = addrInfoList[tableIndex].address;
 	if (0 == dwAddr) {
 		throw IPAddrException("IP Address is 0.0.0.0 - no network is available on this machine. [APIPA (Auto-IP) may not have assigned an IP address yet.]");
-		return DHCPServer::DHCPConfig{};
 	}
 
 	const DWORD dwMask = addrInfoList[tableIndex].mask;
@@ -543,7 +532,6 @@ DHCPServer::DHCPConfig DHCPServer::GetDHCPConfig() {
 
 	if (dwMinAddrValue > dwMaxAddrValue) {
 		throw IPAddrException("No network is available on this machine. [The subnet mask is incorrect.]");
-		return DHCPServer::DHCPConfig{};
 	}
 
 	return DHCPServer::DHCPConfig{ dwAddr, dwMask, dwMinAddr, dwMaxAddr };
@@ -580,14 +568,11 @@ bool DHCPServer::Init(DHCPConfig config) {
 	vAddressesInUse.push_back(aiuiServerAddress);
 
 	WSADATA wsaData;
-	if (NO_ERROR == WSAStartup(MAKEWORD(1, 1), &wsaData)) {
-		return InitializeDHCPServer(&sServerSocket, config.addrInfo.address, pcsServerHostName, sizeof(pcsServerHostName));
-	}
-	else {
+	if (NO_ERROR != WSAStartup(MAKEWORD(1, 1), &wsaData)) {
 		throw SocketException("Unable to initialize WinSock.");
 	}
 
-	return false;
+	return InitializeDHCPServer(&sServerSocket, config.addrInfo.address, pcsServerHostName, sizeof(pcsServerHostName));
 }
 
 void DHCPServer::Start() {
