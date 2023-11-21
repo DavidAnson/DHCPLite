@@ -95,18 +95,22 @@ namespace DHCPLite {
 		VectorAddressInUseInformation vAddressesInUse;
 		AddressInUseInformation aiuiServerAddress{};
 		char pcsServerHostName[MAX_HOSTNAME_LENGTH]{};
+		std::string serverName = "DHCPLite DHCP Server";
 
-		int FindIndexOf(const VectorAddressInUseInformation *const pvAddressesInUse, FindIndexOfFilter pFilter, const void *const pvFilterData);
+		int FindIndexOf(const VectorAddressInUseInformation *const pvAddressesInUse,
+			FindIndexOfFilter pFilter, const void *const pvFilterData);
 
-		bool FindOptionData(const BYTE bOption, const BYTE *const pbOptions, const int iOptionsSize, const BYTE **const ppbOptionData, unsigned int *const piOptionDataSize);
+		bool FindOptionData(const BYTE bOption, const BYTE *const pbOptions, const int iOptionsSize,
+			const BYTE **const ppbOptionData, unsigned int *const piOptionDataSize);
 
-		bool InitializeDHCPServer(SOCKET *const psServerSocket, const DWORD dwServerAddr, char *const pcsServerHostName, const size_t stServerHostNameLength);
+		bool InitializeDHCPServer();
 
-		bool GetDHCPMessageType(const BYTE *const pbOptions, const int iOptionsSize, DHCPMessageTypes *const pdhcpmtMessageType);
+		bool GetDHCPMessageType(const BYTE *const pbOptions, const int iOptionsSize,
+			DHCPMessageTypes *const pdhcpmtMessageType);
 
-		void ProcessDHCPClientRequest(const SOCKET sServerSocket, const char *const pcsServerHostName, const BYTE *const pbData, const int iDataSize, VectorAddressInUseInformation *const pvAddressesInUse, const DWORD dwServerAddr, const DWORD dwMask, const DWORD dwMinAddr, const DWORD dwMaxAddr);
+		void ProcessDHCPClientRequest(const BYTE *const pbData, const int iDataSize);
 
-		bool ReadDHCPClientRequests(const SOCKET sServerSocket, const char *const pcsServerHostName, VectorAddressInUseInformation *const pvAddressesInUse, const DWORD dwServerAddr, const DWORD dwMask, const DWORD dwMinAddr, const DWORD dwMaxAddr);
+		bool ReadDHCPClientRequests();
 
 	public:
 		struct IPAddrInfo {
@@ -161,6 +165,8 @@ namespace DHCPLite {
 		void Close();
 
 		bool Cleanup();
+
+		bool SetServerName(std::string name);
 	};
 
 	class DHCPException : public std::exception {

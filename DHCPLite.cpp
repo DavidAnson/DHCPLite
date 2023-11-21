@@ -57,31 +57,29 @@ bool DHCPServer::FindOptionData(const BYTE bOption, const BYTE *const pbOptions,
 	return false;
 }
 
-bool DHCPServer::InitializeDHCPServer(SOCKET *const psServerSocket, const DWORD dwServerAddr, char *const pcsServerHostName, const size_t stServerHostNameLength) {
- 	assert((0 != psServerSocket) && (0 != dwServerAddr) && (0 != pcsServerHostName) && (1 <= stServerHostNameLength));
-
+bool DHCPServer::InitializeDHCPServer() {
 	// Determine server hostname
-	if (NO_ERROR != gethostname(pcsServerHostName, (int)stServerHostNameLength)) {
+	if (NO_ERROR != gethostname(pcsServerHostName, sizeof(pcsServerHostName))) {
 		pcsServerHostName[0] = '\0';
 	}
 
 	// Open socket and set broadcast option on it
-	*psServerSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
-	if (INVALID_SOCKET == *psServerSocket) {
+	sServerSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+	if (INVALID_SOCKET == sServerSocket) {
 		throw SocketException("Unable to open server socket (port 67).");
 	}
 
 	SOCKADDR_IN saServerAddress{};
 	saServerAddress.sin_family = AF_INET;
-	saServerAddress.sin_addr.s_addr = dwServerAddr;  // Already in network byte order
+	saServerAddress.sin_addr.s_addr = config.addrInfo.address;  // Already in network byte order
 	saServerAddress.sin_port = htons((u_short)DHCP_SERVER_PORT);
 	const int iServerAddressSize = sizeof(saServerAddress);
-	if (SOCKET_ERROR == bind(*psServerSocket, (SOCKADDR *)(&saServerAddress), iServerAddressSize)) {
+	if (SOCKET_ERROR == bind(sServerSocket, (SOCKADDR *)(&saServerAddress), iServerAddressSize)) {
 		throw SocketException("Unable to bind to server socket (port 67).");
 	}
 
 	int iBroadcastOption = TRUE;
-	if (NO_ERROR != setsockopt(*psServerSocket, SOL_SOCKET, SO_BROADCAST, (char *)(&iBroadcastOption), sizeof(iBroadcastOption))) {
+	if (NO_ERROR != setsockopt(sServerSocket, SOL_SOCKET, SO_BROADCAST, (char *)(&iBroadcastOption), sizeof(iBroadcastOption))) {
 		throw SocketException("Unable to set socket options.");
 	}
 
@@ -101,11 +99,8 @@ bool DHCPServer::GetDHCPMessageType(const BYTE *const pbOptions, const int iOpti
 	return false;
 }
 
-void DHCPServer::ProcessDHCPClientRequest(const SOCKET sServerSocket, const char *const pcsServerHostName, const BYTE *const pbData, const int iDataSize, VectorAddressInUseInformation *const pvAddressesInUse, const DWORD dwServerAddr, const DWORD dwMask, const DWORD dwMinAddr, const DWORD dwMaxAddr) {
- 	assert((INVALID_SOCKET != sServerSocket) && (0 != pcsServerHostName) && ((0 == iDataSize) || (0 != pbData)) && (0 != pvAddressesInUse) && (0 != dwServerAddr) && (0 != dwMask) && (0 != dwMinAddr) && (0 != dwMaxAddr));
-
+void DHCPServer::ProcessDHCPClientRequest(const BYTE *const pbData, const int iDataSize) {
 	const BYTE pbDHCPMagicCookie[] = { 99, 130, 83, 99 }; // DHCP magic cookie values
-	const char pcsServerName[] = "DHCPLite DHCP Server";
 
 	const DHCPMessage *const pdhcpmRequest = (DHCPMessage *)pbData;
 	if ((((sizeof(*pdhcpmRequest) + sizeof(pbDHCPMagicCookie)) <= iDataSize) &&  // Take into account mandatory DHCP magic cookie values in options array (RFC 2131 section 3)
@@ -138,7 +133,7 @@ void DHCPServer::ProcessDHCPClientRequest(const SOCKET sServerSocket, const char
 				bool bSeenClientBefore = false;
 				DWORD dwClientPreviousOfferAddr = (DWORD)INADDR_BROADCAST;  // Invalid IP address for later comparison
 				const ClientIdentifierData cid = { pbRequestClientIdentifierData, (DWORD)iRequestClientIdentifierDataSize };
-				const int iIndex = FindIndexOf(pvAddressesInUse, [](const AddressInUseInformation &raiui, const void *const pvFilterData) {
+				const int iIndex = FindIndexOf(&vAddressesInUse, [](const AddressInUseInformation &raiui, const void *const pvFilterData) {
 					const ClientIdentifierData *const pcid = (ClientIdentifierData *)pvFilterData;
 					assert(0 != pcid);
 
@@ -146,7 +141,7 @@ void DHCPServer::ProcessDHCPClientRequest(const SOCKET sServerSocket, const char
 						&& (0 == memcmp(pcid->pbClientIdentifier, raiui.pbClientIdentifier, pcid->dwClientIdentifierSize));
 				}, &cid);
 				if (-1 != iIndex) {
-					const AddressInUseInformation aiui = pvAddressesInUse->at((size_t)iIndex);
+					const AddressInUseInformation aiui = vAddressesInUse.at((size_t)iIndex);
 					dwClientPreviousOfferAddr = ValuetoIP(aiui.dwAddrValue);
 					bSeenClientBefore = true;
 				}
@@ -166,7 +161,7 @@ void DHCPServer::ProcessDHCPClientRequest(const SOCKET sServerSocket, const char
 				pdhcpmReply->flags = pdhcpmRequest->flags;
 				pdhcpmReply->giaddr = pdhcpmRequest->giaddr;
 				CopyMemory(pdhcpmReply->chaddr, pdhcpmRequest->chaddr, sizeof(pdhcpmReply->chaddr));
-				strncpy_s((char *)(pdhcpmReply->sname), sizeof(pdhcpmReply->sname), pcsServerName, _TRUNCATE);
+				strncpy_s((char *)(pdhcpmReply->sname), sizeof(pdhcpmReply->sname), serverName.c_str(), _TRUNCATE);
 				// pdhcpmReply->file = 0;
 				// pdhcpmReply->options below
 				DHCPServerOptions *const pdhcpsoServerOptions = (DHCPServerOptions *)(pdhcpmReply->options);
@@ -184,12 +179,12 @@ void DHCPServer::ProcessDHCPClientRequest(const SOCKET sServerSocket, const char
 				pdhcpsoServerOptions->pbSubnetMask[0] = option_SUBNETMASK;
 				pdhcpsoServerOptions->pbSubnetMask[1] = 4;
 				C_ASSERT(sizeof(u_long) == 4);
-				*((u_long *)(&(pdhcpsoServerOptions->pbSubnetMask[2]))) = dwMask;  // Already in network order
+				*((u_long *)(&(pdhcpsoServerOptions->pbSubnetMask[2]))) = config.addrInfo.mask;  // Already in network order
 				// Server Identifier - RFC 2132 section 9.7
 				pdhcpsoServerOptions->pbServerID[0] = option_SERVERIDENTIFIER;
 				pdhcpsoServerOptions->pbServerID[1] = 4;
 				C_ASSERT(sizeof(u_long) == 4);
-				*((u_long *)(&(pdhcpsoServerOptions->pbServerID[2]))) = dwServerAddr;  // Already in network order
+				*((u_long *)(&(pdhcpsoServerOptions->pbServerID[2]))) = config.addrInfo.address;  // Already in network order
 				pdhcpsoServerOptions->bEND = option_END;
 				bool bSendDHCPMessage = false;
 				switch (dhcpmtMessageType) {
@@ -197,9 +192,9 @@ void DHCPServer::ProcessDHCPClientRequest(const SOCKET sServerSocket, const char
 				{
 					// RFC 2131 section 4.3.1
 					// UNSUPPORTED: Requested IP Address option
-					static DWORD dwServerLastOfferAddrValue = IPtoValue(dwMaxAddr);  // Initialize to max to wrap and offer min first
-					const DWORD dwMinAddrValue = IPtoValue(dwMinAddr);
-					const DWORD dwMaxAddrValue = IPtoValue(dwMaxAddr);
+					static DWORD dwServerLastOfferAddrValue = IPtoValue(config.maxAddr);  // Initialize to max to wrap and offer min first
+					const DWORD dwMinAddrValue = IPtoValue(config.minAddr);
+					const DWORD dwMaxAddrValue = IPtoValue(config.maxAddr);
 					DWORD dwOfferAddrValue;
 					bool bOfferAddrValueValid = false;
 					if (bSeenClientBefore) {
@@ -218,7 +213,7 @@ void DHCPServer::ProcessDHCPClientRequest(const SOCKET sServerSocket, const char
 						 	assert(dwMaxAddrValue + 1 == dwOfferAddrValue);
 							dwOfferAddrValue = dwMinAddrValue;
 						}
-						bOfferAddrValueValid = (-1 == FindIndexOf(pvAddressesInUse, [](const AddressInUseInformation &raiui, const void *const pvFilterData) {
+						bOfferAddrValueValid = (-1 == FindIndexOf(&vAddressesInUse, [](const AddressInUseInformation &raiui, const void *const pvFilterData) {
 							const DWORD *const pdwAddrValue = (DWORD *)pvFilterData;
 							return (*pdwAddrValue == raiui.dwAddrValue);
 						}, &dwOfferAddrValue));
@@ -238,7 +233,7 @@ void DHCPServer::ProcessDHCPClientRequest(const SOCKET sServerSocket, const char
 							CopyMemory(aiuiClientAddress.pbClientIdentifier, pbRequestClientIdentifierData, iRequestClientIdentifierDataSize);
 							aiuiClientAddress.dwClientIdentifierSize = iRequestClientIdentifierDataSize;
 
-							pvAddressesInUse->push_back(aiuiClientAddress);
+							vAddressesInUse.push_back(aiuiClientAddress);
 							pdhcpmReply->yiaddr = dwOfferAddr;
 							pdhcpsoServerOptions->pbMessageType[2] = DHCPMessageType_OFFER;
 							bSendDHCPMessage = true;
@@ -273,7 +268,7 @@ void DHCPServer::ProcessDHCPClientRequest(const SOCKET sServerSocket, const char
 					const BYTE *pbRequestServerIdentifierData = 0;
 					unsigned int iRequestServerIdentifierDataSize = 0;
 					if (FindOptionData(option_SERVERIDENTIFIER, pbOptions, iOptionsSize, &pbRequestServerIdentifierData, &iRequestServerIdentifierDataSize) &&
-						(sizeof(dwServerAddr) == iRequestServerIdentifierDataSize) && (dwServerAddr == *((DWORD *)pbRequestServerIdentifierData))) {
+						(sizeof(config.addrInfo.address) == iRequestServerIdentifierDataSize) && (config.addrInfo.address == *((DWORD *)pbRequestServerIdentifierData))) {
 						// Response to OFFER
 						// DHCPREQUEST generated during SELECTING state
 					 	assert(0 == pdhcpmRequest->ciaddr);
@@ -412,9 +407,7 @@ void DHCPServer::ProcessDHCPClientRequest(const SOCKET sServerSocket, const char
 	}
 }
 
-bool DHCPServer::ReadDHCPClientRequests(const SOCKET sServerSocket, const char *const pcsServerHostName, VectorAddressInUseInformation *const pvAddressesInUse, const DWORD dwServerAddr, const DWORD dwMask, const DWORD dwMinAddr, const DWORD dwMaxAddr) {
-	assert((INVALID_SOCKET != sServerSocket) && (0 != pcsServerHostName) && (0 != pvAddressesInUse) && (0 != dwServerAddr) && (0 != dwMask) && (0 != dwMinAddr) && (0 != dwMaxAddr));
-
+bool DHCPServer::ReadDHCPClientRequests() {
 	BYTE *const pbReadBuffer = (BYTE *)LocalAlloc(LMEM_FIXED, MAX_UDP_MESSAGE_SIZE);
 	if (0 == pbReadBuffer) {
 		throw RequestException("Unable to allocate memory for client datagram read buffer.");
@@ -427,7 +420,7 @@ bool DHCPServer::ReadDHCPClientRequests(const SOCKET sServerSocket, const char *
 		const int iBytesReceived = recvfrom(sServerSocket, (char *)pbReadBuffer, MAX_UDP_MESSAGE_SIZE, 0, (SOCKADDR *)(&saClientAddress), &iClientAddressSize);
 		if (SOCKET_ERROR != iBytesReceived) {
 			// assert(DHCP_CLIENT_PORT == ntohs(saClientAddress.sin_port));  // Not always the case
-			ProcessDHCPClientRequest(sServerSocket, pcsServerHostName, pbReadBuffer, iBytesReceived, pvAddressesInUse, dwServerAddr, dwMask, dwMinAddr, dwMaxAddr);
+			ProcessDHCPClientRequest(pbReadBuffer, iBytesReceived);
 		}
 		else {
 			iLastError = WSAGetLastError();
@@ -572,12 +565,11 @@ bool DHCPServer::Init(DHCPConfig config) {
 		throw SocketException("Unable to initialize WinSock.");
 	}
 
-	return InitializeDHCPServer(&sServerSocket, config.addrInfo.address, pcsServerHostName, sizeof(pcsServerHostName));
+	return InitializeDHCPServer();
 }
 
 void DHCPServer::Start() {
-	assert(ReadDHCPClientRequests(sServerSocket, pcsServerHostName, &vAddressesInUse,
-		config.addrInfo.address, config.addrInfo.mask, config.minAddr, config.maxAddr));
+	assert(ReadDHCPClientRequests());
 }
 
 void DHCPServer::Close() {
@@ -597,5 +589,13 @@ bool DHCPServer::Cleanup() {
 		}
 	}
 
+	return true;
+}
+
+bool DHCPLite::DHCPServer::SetServerName(std::string name) {
+	if (name.size() > 64)
+		return false;
+
+	serverName = name;
 	return true;
 }
