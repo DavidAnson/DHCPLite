@@ -1,5 +1,7 @@
 #pragma once
 
+#include <map>
+#include <array>
 #include <vector>
 #include <string>
 #include <functional>
@@ -17,21 +19,84 @@ namespace DHCPLite {
 	// For display of host name information
 	constexpr auto MAX_HOSTNAME_LENGTH = 256;
 
-	class DHCPServer {
-	private:
+	class DHCPMessage {
+	public:
+		enum MessageTypes {
+			MsgType_DISCOVER = 1,
+			MsgType_OFFER = 2,
+			MsgType_REQUEST = 3,
+			MsgType_DECLINE = 4,
+			MsgType_ACK = 5,
+			MsgType_NAK = 6,
+			MsgType_RELEASE = 7,
+			MsgType_INFORM = 8,
+		};
 		enum MessageOpValues { // RFC 2131 section 2
-			MsgOp_BOOTREQUEST = 1,
-			MsgOp_BOOTREPLY = 2,
+			MsgOp_BOOT_REQUEST = 1,
+			MsgOp_BOOT_REPLY = 2,
 		};
 		enum MessageOptionValues { // RFC 2132 section 9.6
 			MsgOption_PAD = 0,
-			MsgOption_SUBNETMASK = 1,
+			MsgOption_SUBNET_MASK = 1,
 			MsgOption_HOSTNAME = 12,
-			MsgOption_REQUESTEDIPADDRESS = 50,
-			MsgOption_IPADDRESSLEASETIME = 51,
-			MsgOption_DHCPMESSAGETYPE = 53,
-			MsgOption_SERVERIDENTIFIER = 54,
-			MsgOption_CLIENTIDENTIFIER = 61,
+			MsgOption_REQUESTED_ADDRESS = 50,
+			MsgOption_ADDRESS_LEASETIME = 51,
+			MsgOption_MESSAGE_TYPE = 53,
+			MsgOption_SERVERID_ENTIFIER = 54,
+			MsgOption_CLIENTID_ENTIFIER = 61,
+			MsgOption_END = 255,
+		};
+
+	private:
+		std::map<BYTE, std::vector<BYTE>> optionList;
+
+		// Get the options and save it into optionList
+		size_t SetOptionList(std::vector<BYTE> options);
+
+	public:
+		struct MessageBody {		// RFC 2131 section 2
+			BYTE op;				// 0: Message opcode/type
+			BYTE htype;			  	// 1: Hardware addr type (net/if_types.h)
+			BYTE hlen;			  	// 2: Hardware addr length
+			BYTE hops;			  	// 3: Number of relay agent hops from client
+			DWORD xid;			  	// 4: Transaction ID
+			WORD secs;			  	// 8: Seconds since client started looking
+			WORD flags;			  	// 10: Flag bits
+			DWORD ciaddr;		  	// 12: Client IP address (if already in use)
+			DWORD yiaddr;		  	// 16: Client IP address
+			DWORD siaddr;		  	// 20: IP address of next server to talk to
+			DWORD giaddr;		  	// 24: DHCP relay agent IP address
+			BYTE chaddr[16];	  	// 28: Client hardware address
+			BYTE sname[64];		  	// 44: Server name
+			BYTE file[128];		  	// 108: Boot filename
+			DWORD magicCookie;		// 236: Optional parameters (First is MagicCookie)
+		} messageBody;
+
+		DHCPMessage();
+		DHCPMessage(std::vector<BYTE> data);
+
+		std::vector<BYTE> GetData();
+		void SetData(std::vector<BYTE> data);
+
+		std::vector<BYTE> GetOption(MessageOptionValues option);
+		void SetOption(MessageOptionValues option, std::vector<BYTE> data);
+	};
+
+	class DHCPServer {
+	private:
+		enum MessageOpValues { // RFC 2131 section 2
+			MsgOp_BOOT_REQUEST = 1,
+			MsgOp_BOOT_REPLY = 2,
+		};
+		enum MessageOptionValues { // RFC 2132 section 9.6
+			MsgOption_PAD = 0,
+			MsgOption_SUBNET_MASK = 1,
+			MsgOption_HOSTNAME = 12,
+			MsgOption_REQUESTED_ADDRESS = 50,
+			MsgOption_ADDRESS_LEASETIME = 51,
+			MsgOption_MESSAGE_TYPE = 53,
+			MsgOption_SERVERID_ENTIFIER = 54,
+			MsgOption_CLIENTID_ENTIFIER = 61,
 			MsgOption_END = 255,
 		};
 		enum MessageTypes {
@@ -76,6 +141,7 @@ namespace DHCPLite {
 #pragma pack(pop)
 #pragma warning(pop)
 
+	private:
 		struct AddressInUseInformation {
 			DWORD dwAddrValue;
 			BYTE *pbClientIdentifier;

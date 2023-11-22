@@ -7,6 +7,87 @@
 
 using namespace DHCPLite;
 
+size_t DHCPMessage::SetOptionList(std::vector<BYTE> options) {
+	size_t size = 0;
+	for (size_t i = 0; i < options.size(); i++) { // RFC 2132
+		switch (options[i]) {
+		case MsgOption_PAD:
+			continue;
+			break;
+		case MsgOption_END:
+			return size;
+			break;
+		default:
+		{
+			if (i + 1 >= options.size()) {
+				assert(!(TEXT("Invalid option data (not enough room for required length byte).")));
+				break;
+			}
+
+			BYTE optionLen = options[i + 1];
+			std::vector<BYTE> data(optionLen);
+			std::copy_n(options.begin() + (i + 2), optionLen, data.begin());
+			optionList[options[i]] = data;
+			
+			i += optionLen;
+			size++;
+			break;
+		}
+		}
+	}
+	return size;
+}
+
+DHCPMessage::DHCPMessage() : messageBody() {
+	BYTE *pMessageBody = reinterpret_cast<BYTE *>(&messageBody);
+	std::fill_n(pMessageBody, sizeof(MessageBody), 0);
+}
+
+DHCPMessage::DHCPMessage(std::vector<BYTE> data) {
+	SetData(data);
+}
+
+std::vector<BYTE> DHCPMessage::GetData() {
+	std::vector<BYTE> data(sizeof(MessageBody));
+	BYTE *pMessageBody = reinterpret_cast<BYTE *>(&messageBody);
+	std::copy_n(pMessageBody, sizeof(MessageBody), data.begin());
+
+	for (auto &&option : optionList) {
+		data.push_back(option.first);
+
+		std::vector<BYTE> optionData = option.second;
+		auto optionDataSize = optionData.size();
+		data.push_back(static_cast<BYTE>(optionDataSize));
+
+		auto dataSize = data.size();
+		data.resize(dataSize + optionDataSize);
+		std::copy_n(optionData.begin(), optionDataSize, data.begin() + dataSize);
+	}
+
+	return data;
+}
+
+void DHCPMessage::SetData(std::vector<BYTE> data) {
+	BYTE *pMessageBody = reinterpret_cast<BYTE *>(&messageBody);
+	std::copy_n(data.begin(), sizeof(MessageBody), pMessageBody);
+
+	std::vector<BYTE> options(sizeof(MessageBody));
+	options.assign(data.begin() + sizeof(MessageBody), data.end());
+	SetOptionList(options);
+}
+
+std::vector<BYTE> DHCPMessage::GetOption(MessageOptionValues option) {
+	if (optionList.find(option) != optionList.end()) {
+		return optionList[option];
+	}
+
+	return std::vector<BYTE>{};
+}
+
+void DHCPMessage::SetOption(MessageOptionValues option, std::vector<BYTE> data) {
+	optionList[option] = data;
+}
+
 int DHCPServer::FindIndexOf(const VectorAddressInUseInformation *const pvAddressesInUse, FindIndexOfFilter pFilter) {
  	assert((0 != pvAddressesInUse) && (0 != pFilter));
 
@@ -90,7 +171,7 @@ bool DHCPServer::GetDHCPMessageType(const BYTE *const pbOptions, const int iOpti
 
 	const BYTE *pbDHCPMessageTypeData;
 	unsigned int iDHCPMessageTypeDataSize;
-	if (FindOptionData(MsgOption_DHCPMESSAGETYPE, pbOptions, iOptionsSize, &pbDHCPMessageTypeData, &iDHCPMessageTypeDataSize)
+	if (FindOptionData(MsgOption_MESSAGE_TYPE, pbOptions, iOptionsSize, &pbDHCPMessageTypeData, &iDHCPMessageTypeDataSize)
 		&& (1 == iDHCPMessageTypeDataSize) && (1 <= *pbDHCPMessageTypeData) && (*pbDHCPMessageTypeData <= 8)) {
 		*pdhcpmtMessageType = (MessageTypes)(*pbDHCPMessageTypeData);
 		return true;
@@ -103,7 +184,7 @@ void DHCPServer::ProcessDHCPClientRequest(const BYTE *const pbData, const int iD
 
 	const DHCPMessage *const pdhcpmRequest = (DHCPMessage *)pbData;
 	if ((((sizeof(*pdhcpmRequest) + sizeof(pbDHCPMagicCookie)) <= iDataSize) &&  // Take into account mandatory DHCP magic cookie values in options array (RFC 2131 section 3)
-		(MsgOp_BOOTREQUEST == pdhcpmRequest->op) &&
+		(MsgOp_BOOT_REQUEST == pdhcpmRequest->op) &&
 		// (pdhcpmRequest->htype) && // Could also validate htype
 		(0 == memcmp(pbDHCPMagicCookie, pdhcpmRequest->options, sizeof(pbDHCPMagicCookie))))
 		) {
@@ -124,7 +205,7 @@ void DHCPServer::ProcessDHCPClientRequest(const BYTE *const pbData, const int iD
 				// Determine client identifier in proper RFC 2131 order (client identifier option then chaddr)
 				const BYTE *pbRequestClientIdentifierData;
 				unsigned int iRequestClientIdentifierDataSize;
-				if (!FindOptionData(MsgOption_CLIENTIDENTIFIER, pbOptions, iOptionsSize, &pbRequestClientIdentifierData, &iRequestClientIdentifierDataSize)) {
+				if (!FindOptionData(MsgOption_CLIENTID_ENTIFIER, pbOptions, iOptionsSize, &pbRequestClientIdentifierData, &iRequestClientIdentifierDataSize)) {
 					pbRequestClientIdentifierData = pdhcpmRequest->chaddr;
 					iRequestClientIdentifierDataSize = sizeof(pdhcpmRequest->chaddr);
 				}
@@ -146,7 +227,7 @@ void DHCPServer::ProcessDHCPClientRequest(const BYTE *const pbData, const int iD
 				BYTE bDHCPMessageBuffer[sizeof(DHCPMessage) + sizeof(DHCPServerOptions)];
 				ZeroMemory(bDHCPMessageBuffer, sizeof(bDHCPMessageBuffer));
 				DHCPMessage *const pdhcpmReply = (DHCPMessage *)&bDHCPMessageBuffer;
-				pdhcpmReply->op = MsgOp_BOOTREPLY;
+				pdhcpmReply->op = MsgOp_BOOT_REPLY;
 				pdhcpmReply->htype = pdhcpmRequest->htype;
 				pdhcpmReply->hlen = pdhcpmRequest->hlen;
 				// pdhcpmReply->hops = 0;
@@ -163,21 +244,21 @@ void DHCPServer::ProcessDHCPClientRequest(const BYTE *const pbData, const int iD
 				DHCPServerOptions *const pdhcpsoServerOptions = (DHCPServerOptions *)(pdhcpmReply->options);
 				CopyMemory(pdhcpsoServerOptions->pbMagicCookie, pbDHCPMagicCookie, sizeof(pdhcpsoServerOptions->pbMagicCookie));
 				// DHCP Message Type - RFC 2132 section 9.6
-				pdhcpsoServerOptions->pbMessageType[0] = MsgOption_DHCPMESSAGETYPE;
+				pdhcpsoServerOptions->pbMessageType[0] = MsgOption_MESSAGE_TYPE;
 				pdhcpsoServerOptions->pbMessageType[1] = 1;
 				// pdhcpsoServerOptions->pbMessageType[2] set below
 				// IP Address Lease Time - RFC 2132 section 9.2
-				pdhcpsoServerOptions->pbLeaseTime[0] = MsgOption_IPADDRESSLEASETIME;
+				pdhcpsoServerOptions->pbLeaseTime[0] = MsgOption_ADDRESS_LEASETIME;
 				pdhcpsoServerOptions->pbLeaseTime[1] = 4;
 				C_ASSERT(sizeof(u_long) == 4);
 				*((u_long *)(&(pdhcpsoServerOptions->pbLeaseTime[2]))) = htonl(1 * 60 * 60);  // One hour
 				// Subnet Mask - RFC 2132 section 3.3
-				pdhcpsoServerOptions->pbSubnetMask[0] = MsgOption_SUBNETMASK;
+				pdhcpsoServerOptions->pbSubnetMask[0] = MsgOption_SUBNET_MASK;
 				pdhcpsoServerOptions->pbSubnetMask[1] = 4;
 				C_ASSERT(sizeof(u_long) == 4);
 				*((u_long *)(&(pdhcpsoServerOptions->pbSubnetMask[2]))) = config.addrInfo.mask;  // Already in network order
 				// Server Identifier - RFC 2132 section 9.7
-				pdhcpsoServerOptions->pbServerID[0] = MsgOption_SERVERIDENTIFIER;
+				pdhcpsoServerOptions->pbServerID[0] = MsgOption_SERVERID_ENTIFIER;
 				pdhcpsoServerOptions->pbServerID[1] = 4;
 				C_ASSERT(sizeof(u_long) == 4);
 				*((u_long *)(&(pdhcpsoServerOptions->pbServerID[2]))) = config.addrInfo.address;  // Already in network order
@@ -256,13 +337,13 @@ void DHCPServer::ProcessDHCPClientRequest(const BYTE *const pbData, const int iD
 					DWORD dwRequestedIPAddress = INADDR_BROADCAST;  // Invalid IP address for later comparison
 					const BYTE *pbRequestRequestedIPAddressData = 0;
 					unsigned int iRequestRequestedIPAddressDataSize = 0;
-					if (FindOptionData(MsgOption_REQUESTEDIPADDRESS, pbOptions, iOptionsSize, &pbRequestRequestedIPAddressData, &iRequestRequestedIPAddressDataSize) && (sizeof(dwRequestedIPAddress) == iRequestRequestedIPAddressDataSize)) {
+					if (FindOptionData(MsgOption_REQUESTED_ADDRESS, pbOptions, iOptionsSize, &pbRequestRequestedIPAddressData, &iRequestRequestedIPAddressDataSize) && (sizeof(dwRequestedIPAddress) == iRequestRequestedIPAddressDataSize)) {
 						dwRequestedIPAddress = *((DWORD *)pbRequestRequestedIPAddressData);
 					}
 					// Determine server identifier
 					const BYTE *pbRequestServerIdentifierData = 0;
 					unsigned int iRequestServerIdentifierDataSize = 0;
-					if (FindOptionData(MsgOption_SERVERIDENTIFIER, pbOptions, iOptionsSize, &pbRequestServerIdentifierData, &iRequestServerIdentifierDataSize) &&
+					if (FindOptionData(MsgOption_SERVERID_ENTIFIER, pbOptions, iOptionsSize, &pbRequestServerIdentifierData, &iRequestServerIdentifierDataSize) &&
 						(sizeof(config.addrInfo.address) == iRequestServerIdentifierDataSize) && (config.addrInfo.address == *((DWORD *)pbRequestServerIdentifierData))) {
 						// Response to OFFER
 						// DHCPREQUEST generated during SELECTING state
@@ -537,11 +618,11 @@ void DHCPServer::SetNAKCallback(MessageCallback callback) {
 	MessageCallback_NAK = callback;
 }
 
-DHCPLite::DHCPServer::DHCPServer(DHCPConfig config) {
+DHCPServer::DHCPServer(DHCPConfig config) {
 	Init(config);
 }
 
-bool DHCPLite::DHCPServer::Init() {
+bool DHCPServer::Init() {
 	Init(GetDHCPConfig());
 
 	return false;
@@ -589,7 +670,7 @@ bool DHCPServer::Cleanup() {
 	return true;
 }
 
-bool DHCPLite::DHCPServer::SetServerName(std::string name) {
+bool DHCPServer::SetServerName(std::string name) {
 	if (name.size() > 64)
 		return false;
 
