@@ -6,6 +6,7 @@
 #include <string>
 #include <functional>
 #include <windows.h>
+#include <winsock.h>
 
 namespace DHCPLite {
 	// Maximum size of a UDP datagram (see RFC 768)
@@ -42,8 +43,8 @@ namespace DHCPLite {
 			MsgOption_REQUESTED_ADDRESS = 50,
 			MsgOption_ADDRESS_LEASETIME = 51,
 			MsgOption_MESSAGE_TYPE = 53,
-			MsgOption_SERVERID_ENTIFIER = 54,
-			MsgOption_CLIENTID_ENTIFIER = 61,
+			MsgOption_SERVER_IDENTIFIER = 54,
+			MsgOption_CLIENT_IDENTIFIER = 61,
 			MsgOption_END = 255,
 		};
 
@@ -54,8 +55,6 @@ namespace DHCPLite {
 		size_t SetOptionList(std::vector<BYTE> options);
 
 	public:
-		static const DWORD MAGIC_COOKIE{ 0x63'82'53'63 }; // DHCP magic cookie values
-
 		struct MessageBody {		// RFC 2131 section 2
 			BYTE op;				// 0: Message opcode/type
 			BYTE htype;			  	// 1: Hardware addr type (net/if_types.h)
@@ -91,64 +90,6 @@ namespace DHCPLite {
 
 	class DHCPServer {
 	private:
-		enum MessageOpValues { // RFC 2131 section 2
-			MsgOp_BOOT_REQUEST = 1,
-			MsgOp_BOOT_REPLY = 2,
-		};
-		enum MessageOptionValues { // RFC 2132 section 9.6
-			MsgOption_PAD = 0,
-			MsgOption_SUBNET_MASK = 1,
-			MsgOption_HOSTNAME = 12,
-			MsgOption_REQUESTED_ADDRESS = 50,
-			MsgOption_ADDRESS_LEASETIME = 51,
-			MsgOption_MESSAGE_TYPE = 53,
-			MsgOption_SERVERID_ENTIFIER = 54,
-			MsgOption_CLIENTID_ENTIFIER = 61,
-			MsgOption_END = 255,
-		};
-		enum MessageTypes {
-			MsgType_DISCOVER = 1,
-			MsgType_OFFER = 2,
-			MsgType_REQUEST = 3,
-			MsgType_DECLINE = 4,
-			MsgType_ACK = 5,
-			MsgType_NAK = 6,
-			MsgType_RELEASE = 7,
-			MsgType_INFORM = 8,
-		};
-
-#pragma warning(push)
-#pragma warning(disable : 4200)
-#pragma pack(push, 1)
-		struct DHCPMessage {		// RFC 2131 section 2
-			BYTE op;				// 0: Message opcode/type
-			BYTE htype;			  	// 1: Hardware addr type (net/if_types.h)
-			BYTE hlen;			  	// 2: Hardware addr length
-			BYTE hops;			  	// 3: Number of relay agent hops from client
-			DWORD xid;			  	// 4: Transaction ID
-			WORD secs;			  	// 8: Seconds since client started looking
-			WORD flags;			  	// 10: Flag bits
-			DWORD ciaddr;		  	// 12: Client IP address (if already in use)
-			DWORD yiaddr;		  	// 16: Client IP address
-			DWORD siaddr;		  	// 18: IP address of next server to talk to
-			DWORD giaddr;		  	// 20: DHCP relay agent IP address
-			BYTE chaddr[16];	  	// 24: Client hardware address
-			BYTE sname[64];		  	// 40: Server name
-			BYTE file[128];		  	// 104: Boot filename
-			BYTE options[];			// 212: Optional parameters
-		};
-		struct DHCPServerOptions {
-			BYTE pbMagicCookie[4];
-			BYTE pbMessageType[3];
-			BYTE pbLeaseTime[6];
-			BYTE pbSubnetMask[6];
-			BYTE pbServerID[6];
-			BYTE bEND;
-		};
-#pragma pack(pop)
-#pragma warning(pop)
-
-	private:
 		struct AddressInUseInformation {
 			DWORD dwAddrValue;
 			BYTE *pbClientIdentifier;
@@ -167,13 +108,7 @@ namespace DHCPLite {
 
 		int FindIndexOf(const VectorAddressInUseInformation *const pvAddressesInUse, FindIndexOfFilter pFilter);
 
-		bool FindOptionData(const BYTE bOption, const BYTE *const pbOptions, const int iOptionsSize,
-			const BYTE **const ppbOptionData, unsigned int *const piOptionDataSize);
-
 		bool InitializeDHCPServer();
-
-		bool GetDHCPMessageType(const BYTE *const pbOptions, const int iOptionsSize,
-			MessageTypes *const pdhcpmtMessageType);
 
 		void ProcessDHCPClientRequest(const BYTE *const pbData, const int iDataSize);
 
