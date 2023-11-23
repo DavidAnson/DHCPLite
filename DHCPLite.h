@@ -54,6 +54,8 @@ namespace DHCPLite {
 		size_t SetOptionList(std::vector<BYTE> options);
 
 	public:
+		static const DWORD MAGIC_COOKIE{ 0x63'82'53'63 }; // DHCP magic cookie values
+
 		struct MessageBody {		// RFC 2131 section 2
 			BYTE op;				// 0: Message opcode/type
 			BYTE htype;			  	// 1: Hardware addr type (net/if_types.h)
@@ -70,7 +72,7 @@ namespace DHCPLite {
 			BYTE sname[64];		  	// 44: Server name
 			BYTE file[128];		  	// 108: Boot filename
 			DWORD magicCookie;		// 236: Optional parameters (First is MagicCookie)
-		} messageBody;
+		} body;
 
 		DHCPMessage();
 		DHCPMessage(std::vector<BYTE> data);
@@ -78,8 +80,13 @@ namespace DHCPLite {
 		std::vector<BYTE> GetData();
 		void SetData(std::vector<BYTE> data);
 
-		std::vector<BYTE> GetOption(MessageOptionValues option);
-		void SetOption(MessageOptionValues option, std::vector<BYTE> data);
+		std::vector<BYTE> GetOptionRaw(MessageOptionValues option);
+		template <class T> T GetOption(MessageOptionValues option);
+		void SetOptionRaw(MessageOptionValues option, std::vector<BYTE> data);
+		template <class T> void SetOption(MessageOptionValues option, T data);
+		void SetOption(MessageOptionValues option);
+
+		static std::vector<BYTE> PByteToVByte(const BYTE *data, int size);
 	};
 
 	class DHCPServer {
@@ -232,6 +239,11 @@ namespace DHCPLite {
 	class DHCPException : public std::exception {
 	public:
 		DHCPException(const char *Message) : exception(Message, 1) {}
+	};
+
+	class MessageException : public DHCPException {
+	public:
+		MessageException(const char *Message) : DHCPException(Message) {}
 	};
 
 	class IPAddrException : public DHCPException {

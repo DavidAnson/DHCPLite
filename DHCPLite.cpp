@@ -28,7 +28,7 @@ size_t DHCPMessage::SetOptionList(std::vector<BYTE> options) {
 			std::vector<BYTE> data(optionLen);
 			std::copy_n(options.begin() + (i + 2), optionLen, data.begin());
 			optionList[options[i]] = data;
-			
+
 			i += optionLen;
 			size++;
 			break;
@@ -38,9 +38,9 @@ size_t DHCPMessage::SetOptionList(std::vector<BYTE> options) {
 	return size;
 }
 
-DHCPMessage::DHCPMessage() : messageBody() {
-	BYTE *pMessageBody = reinterpret_cast<BYTE *>(&messageBody);
-	std::fill_n(pMessageBody, sizeof(MessageBody), 0);
+DHCPMessage::DHCPMessage() : body() {
+	BYTE *pBody = reinterpret_cast<BYTE *>(&body);
+	std::fill_n(pBody, sizeof(MessageBody), 0);
 }
 
 DHCPMessage::DHCPMessage(std::vector<BYTE> data) {
@@ -49,34 +49,49 @@ DHCPMessage::DHCPMessage(std::vector<BYTE> data) {
 
 std::vector<BYTE> DHCPMessage::GetData() {
 	std::vector<BYTE> data(sizeof(MessageBody));
-	BYTE *pMessageBody = reinterpret_cast<BYTE *>(&messageBody);
-	std::copy_n(pMessageBody, sizeof(MessageBody), data.begin());
+	BYTE *pBody = reinterpret_cast<BYTE *>(&body);
+	std::copy_n(pBody, sizeof(MessageBody), data.begin());
 
 	for (auto &&option : optionList) {
 		data.push_back(option.first);
 
 		std::vector<BYTE> optionData = option.second;
 		auto optionDataSize = optionData.size();
-		data.push_back(static_cast<BYTE>(optionDataSize));
+		switch (optionDataSize) {
+		case 0:
+			break;
+		case 1:
+			data.push_back(static_cast<BYTE>(optionData[0]));
+			break;
+		default:
+		{
+			data.push_back(static_cast<BYTE>(optionDataSize));
 
-		auto dataSize = data.size();
-		data.resize(dataSize + optionDataSize);
-		std::copy_n(optionData.begin(), optionDataSize, data.begin() + dataSize);
+			auto dataSize = data.size();
+			data.resize(dataSize + optionDataSize);
+			std::copy_n(optionData.begin(), optionDataSize, data.begin() + dataSize);
+			break;
+		}
+		}
 	}
 
 	return data;
 }
 
 void DHCPMessage::SetData(std::vector<BYTE> data) {
-	BYTE *pMessageBody = reinterpret_cast<BYTE *>(&messageBody);
-	std::copy_n(data.begin(), sizeof(MessageBody), pMessageBody);
+	// Take into account mandatory DHCP magic cookie values in options array (RFC 2131 section 3)
+	if (data.size() < sizeof(MessageBody))
+		throw MessageException("Invalid DHCP message (failed initial checks).");
+
+	BYTE *pBody = reinterpret_cast<BYTE *>(&body);
+	std::copy_n(data.begin(), sizeof(MessageBody), pBody);
 
 	std::vector<BYTE> options(sizeof(MessageBody));
 	options.assign(data.begin() + sizeof(MessageBody), data.end());
 	SetOptionList(options);
 }
 
-std::vector<BYTE> DHCPMessage::GetOption(MessageOptionValues option) {
+std::vector<BYTE> DHCPMessage::GetOptionRaw(MessageOptionValues option) {
 	if (optionList.find(option) != optionList.end()) {
 		return optionList[option];
 	}
@@ -84,8 +99,50 @@ std::vector<BYTE> DHCPMessage::GetOption(MessageOptionValues option) {
 	return std::vector<BYTE>{};
 }
 
-void DHCPMessage::SetOption(MessageOptionValues option, std::vector<BYTE> data) {
+template <class T> T DHCPMessage::GetOption(MessageOptionValues option) {
+	auto raw = GetOptionRaw(option);
+	if (raw.size() <= 0) return T{};
+
+	if (std::is_same(T, BYTE)) {
+		return raw[0];
+	}
+	else if (std::is_same(T, WORD)) {
+		return *reinterpret_cast<WORD *>(raw.data());
+	}
+	else if (std::is_same(T, DWORD)) {
+		return *reinterpret_cast<DWORD *>(raw.data());
+	}
+
+	return T{};
+}
+
+void DHCPMessage::SetOptionRaw(MessageOptionValues option, std::vector<BYTE> data) {
 	optionList[option] = data;
+}
+
+template <class T> void DHCPMessage::SetOption(MessageOptionValues option, T data) {
+	if (std::is_same(T, BYTE)) {
+		optionList[option] = std::vector<BYTE>{ data };
+	}
+	else if (std::is_same(T, WORD)) {
+		optionList[option] = PByteToVByte(&data, 2);
+	}
+	else if (std::is_same(T, DWORD)) {
+		optionList[option] = PByteToVByte(&data, 4);
+	}
+	else {
+		throw MessageException("Invalid DHCP message option type.");
+	}
+}
+
+void DHCPLite::DHCPMessage::SetOption(MessageOptionValues option) {
+	optionList[option] = std::vector<BYTE>{};
+}
+
+std::vector<BYTE> DHCPMessage::PByteToVByte(const BYTE *data, int size) {
+	std::vector<BYTE> bytes(size);
+	std::copy_n(data, size, bytes.begin());
+	return bytes;
 }
 
 int DHCPServer::FindIndexOf(const VectorAddressInUseInformation *const pvAddressesInUse, FindIndexOfFilter pFilter) {
