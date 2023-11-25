@@ -259,7 +259,6 @@ void DHCPServer::ProcessDHCPClientRequest(const BYTE *const pbData, const int iD
 	replyMessage.body.magicCookie = *reinterpret_cast<const DWORD*>(MAGIC_COOKIE);
 	// DHCP Message Type - RFC 2132 section 9.6
 	replyMessage.SetOption<BYTE>(DHCPMessage::MsgOption_MESSAGE_TYPE, DHCPMessage::MsgType_DISCOVER);
-	// set MessageType data set below
 	// IP Address Lease Time - RFC 2132 section 9.2
 	C_ASSERT(sizeof(u_long) == 4);
 	replyMessage.SetOption(DHCPMessage::MsgOption_ADDRESS_LEASETIME, htonl(1 * 60 * 60)); // One hour
@@ -614,9 +613,7 @@ DHCPServer::DHCPServer(DHCPConfig config) {
 }
 
 bool DHCPServer::Init() {
-	Init(GetDHCPConfig());
-
-	return false;
+	return Init(GetDHCPConfig());
 }
 
 bool DHCPServer::Init(DHCPConfig config) {
